@@ -251,7 +251,7 @@ func NewOrder(id string, ...) (*Order, error)  // 反例:接收已存在的 id,�
 **正例**:
 
 - `NewOrder(...)` 在内部生成 ID,做全量校验,创建新聚合
-- `UnmarshalOrderFromDatabase(...)` 接收 id + 所有字段,仅恢复状态,**只允许 adapters/mysql 调用**
+- `Rehydrate(...)` 接收 id + 所有字段,仅恢复状态,**只允许 adapters/mysql 调用**
 
 ---
 
@@ -529,7 +529,7 @@ if err != nil {
 }
 ```
 
-**正例**:`CommitOutcomeUnknownError` 必须用 `errors.As` 识别;上层按业务 key 查询确认提交结果后,再决定补偿 / 重放,不得自动重试。
+**正例**:`CommitOutcomeUnknownError` 必须用 `errors.AsType` 识别;上层按业务 key 查询确认提交结果后,再决定补偿 / 重放,不得自动重试。
 
 详见 [`cross-context.md`](./cross-context.md) §3.2。
 

@@ -209,7 +209,7 @@ sequenceDiagram
 |---|---|---|
 | 事务内 | 1. 对 `Update{Aggregate}`:加载并锁定聚合 → 执行 update closure;对 `Save`:写聚合表 | 回滚;无业务写、无发布;**可**重试同一 `Save` 或整个 update command |
 | 事务内 | 2. `PeekEvents()`(不 drain) | 同上 |
-| 事务内 | 3. `Translate` + payload 序列化 → 暂存 `[]sqltx.PendingPublish` | 回滚;无业务写、无发布;aggregate 仍持有事件,**可**重试 |
+| 事务内 | 3. `Translate` + payload 序列化 → 暂存 `[]dbtx.PendingPublish` | 回滚;无业务写、无发布;aggregate 仍持有事件,**可**重试 |
 | commit | 4. 提交事务 | `Commit` 返回 error 时结果未知;不 publish,按 unknown commit outcome 处理 |
 | commit 后 | 5. 生成 `event_id` → 构造 envelope → `eventbus.Publish`(全部 pending) | publish 失败:业务写已提交;事件仍在 aggregate(见下表) |
 | commit 后 | 6. 全部 publish 成功后 `ClearEvents()` | 仅在此步之后进入"事件已从内存清除"状态 |
@@ -248,7 +248,7 @@ type Repository interface {
 
 #### 事务错误类型归属
 
-commit outcome unknown 与 post-commit publish failure 是**技术事务语义**,不是 domain error。统一定义在 `internal/platform/txerr`(或等价的 platform persistence 包),供 adapters 返回、app / ports / retry middleware 用 `errors.As` 识别;不要定义在 `domain/`,也不要定义在 `adapters/mysql/`(app 不能 import adapter)。
+commit outcome unknown 与 post-commit publish failure 是**技术事务语义**,不是 domain error。统一定义在 `internal/platform/txerr`(或等价的 platform persistence 包),供 adapters 返回、app / ports / retry middleware 用 `errors.AsType` 识别;不要定义在 `domain/`,也不要定义在 `adapters/mysql/`(app 不能 import adapter)。
 
 最小形态:
 
@@ -275,8 +275,8 @@ func (e PostCommitPublishError) Unwrap() error { return e.Err }
 
 app / ports 处理规则:
 
-- `errors.As(err, *txerr.CommitOutcomeUnknownError)`:不得自动重试;按业务 key 查询确认提交结果后再补偿 / 重放
-- `errors.As(err, *txerr.PostCommitPublishError)`:不得当作"业务未写入";返回响应 / 重试策略必须显式体现 `Committed=true`
+- `errors.AsType[*txerr.CommitOutcomeUnknownError](err)`:不得自动重试;按业务 key 查询确认提交结果后再补偿 / 重放
+- `errors.AsType[*txerr.PostCommitPublishError](err)`:不得当作"业务未写入";返回响应 / 重试策略必须显式体现 `Committed=true`
 
 **为什么翻译放在 repository 而不在 app/command**:
 
@@ -324,7 +324,7 @@ func Translate(de any) (IntegrationEvent, bool) {
 }
 ```
 
-repository 调用 `module.Translate(...)`,对每个有翻译结果的 integration event 暂存为 `sqltx.PendingPublish{EventType: ..., Payload: ..., Source: aggregate}`。事务提交成功后,repository 生成本次投递尝试的 `event_id`(`Deps.IDGen.Next()`),构造 `eventbus.Envelope{EventID, Type, Payload}` 并通过 `platform/eventbus` 发布。全部 pending publish 成功后,按 aggregate 去重并统一调用 `ClearEvents()`。`event_id` 随 envelope 传递到订阅方,用于追踪与排障(§3.3、§3.5)。
+repository 调用 `module.Translate(...)`,对每个有翻译结果的 integration event 暂存为 `dbtx.PendingPublish{EventType: ..., Payload: ..., Source: aggregate}`。事务提交成功后,repository 生成本次投递尝试的 `event_id`(`Deps.IDGen.Next()`),构造 `eventbus.Envelope{EventID, Type, Payload}` 并通过 `platform/eventbus` 发布。全部 pending publish 成功后,按 aggregate 去重并统一调用 `ClearEvents()`。`event_id` 随 envelope 传递到订阅方,用于追踪与排障(§3.3、§3.5)。
 
 ### 3.3 event_id 的来源与传递
 
@@ -454,10 +454,10 @@ type Repositories struct {
 
 #### 泛型实现位置
 
-事务模板放在 `internal/platform/sqltx`,用类型参数复用 Begin / Rollback / Commit / commit 后 flush 样板。类型参数 `R` 是某个 BC 自己的 `Repositories` struct。
+事务模板放在 `internal/platform/dbtx`,用类型参数复用 Begin / Rollback / Commit / commit 后 flush 样板。类型参数 `R` 是某个 BC 自己的 `Repositories` struct。
 
 ```go
-package sqltx
+package dbtx
 
 type RepoFactory[R any] func(tx *sql.Tx, pending *PendingCollector) R
 
@@ -488,15 +488,15 @@ type UnitOfWork[R any] struct {
 func (u *UnitOfWork[R]) RunInTx(ctx context.Context, fn func(context.Context, R) error) error
 ```
 
-`PendingCollector.Append` 由 tx-bound repository 在 `Save` / `Update{Aggregate}` 内调用;`flush` 由 adapter 注入,因为它需要 BC-local 的 `Deps`(如 `EventBus`、`IDGen`、`Translate` 所需上下文)。`sqltx` 只负责事务模板、pending 收集和 commit 后调用 `flush`,不 import 任一 BC 的 `ports/module`。
+`PendingCollector.Append` 由 tx-bound repository 在 `Save` / `Update{Aggregate}` 内调用;`flush` 由 adapter 注入,因为它需要 BC-local 的 `Deps`(如 `EventBus`、`IDGen`、`Translate` 所需上下文)。`dbtx` 只负责事务模板、pending 收集和 commit 后调用 `flush`,不 import 任一 BC 的 `ports/module`。
 
 `adapters/mysql/uow.go` 对平台泛型实现做一层薄包装,返回本 BC 的 `command.UnitOfWork`:
 
 ```go
 func NewUnitOfWork(db *sql.DB, deps Deps) command.UnitOfWork {
-    return sqltx.NewUnitOfWork[command.Repositories](
+    return dbtx.NewUnitOfWork[command.Repositories](
         db,
-        func(tx *sql.Tx, pending *sqltx.PendingCollector) command.Repositories {
+        func(tx *sql.Tx, pending *dbtx.PendingCollector) command.Repositories {
             return command.Repositories{
                 Orders: NewOrderRepositoryWithTx(tx, pending, deps),
             }

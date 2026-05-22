@@ -1,0 +1,69 @@
+package order
+
+import (
+	"errors"
+	"reflect"
+	"testing"
+)
+
+func TestNewOrderPlacesOrderAndRecordsEvent(t *testing.T) {
+	o, err := NewOrder("user-1", "addr-1", AddressSnapshot{Receiver: "Ada", Phone: "138", City: "Shanghai", Detail: "Road"}, []Item{
+		{ProductUUID: "product-1", ProductName: "Keyboard", UnitPriceCents: 1000, Qty: 2},
+	})
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+	if o.Status() != StatusPlaced {
+		t.Fatalf("Status() = %q, want %q", o.Status(), StatusPlaced)
+	}
+	if o.TotalCents() != 2000 {
+		t.Fatalf("TotalCents() = %d, want %d", o.TotalCents(), 2000)
+	}
+	if len(o.PeekEvents()) != 1 {
+		t.Fatalf("len(PeekEvents()) = %d, want 1", len(o.PeekEvents()))
+	}
+}
+
+func TestOrderUsesUUIDTerminology(t *testing.T) {
+	o, err := NewOrder("user-1", "addr-1", AddressSnapshot{Receiver: "Ada", Phone: "138", City: "Shanghai", Detail: "Road"}, []Item{
+		{ProductUUID: "product-1", ProductName: "Keyboard", UnitPriceCents: 1000, Qty: 2},
+	})
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+	var uuid OrderUUID = o.UUID()
+	if uuid == "" {
+		t.Fatal("UUID() is empty")
+	}
+	if _, ok := reflect.TypeOf(o).MethodByName("ID"); ok {
+		t.Fatal("Order exposes ID(), want UUID()")
+	}
+}
+
+func TestNewOrderRejectsEmptyAddressSnapshot(t *testing.T) {
+	_, err := NewOrder("user-1", "addr-1", AddressSnapshot{}, []Item{
+		{ProductUUID: "product-1", ProductName: "Keyboard", UnitPriceCents: 1000, Qty: 2},
+	})
+	if !errors.Is(err, ErrInvalidOrder) {
+		t.Fatalf("NewOrder() error = %v, want ErrInvalidOrder", err)
+	}
+}
+
+func TestOrder_MarkPaidIsIdempotent(t *testing.T) {
+	o, err := NewOrder("user-1", "addr-1", AddressSnapshot{Receiver: "Ada", Phone: "138", City: "Shanghai", Detail: "Road"}, []Item{
+		{ProductUUID: "product-1", ProductName: "Keyboard", UnitPriceCents: 1000, Qty: 1},
+	})
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+
+	if err := o.MarkPaid("payment-1"); err != nil {
+		t.Fatalf("MarkPaid() error = %v", err)
+	}
+	if err := o.MarkPaid("payment-1"); err != nil {
+		t.Fatalf("MarkPaid() duplicate error = %v", err)
+	}
+	if o.Status() != StatusPaid {
+		t.Fatalf("Status() = %q, want %q", o.Status(), StatusPaid)
+	}
+}

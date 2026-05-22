@@ -127,10 +127,10 @@ func (o *Order) ID() OrderID { return o.id }
 | 用途 | 命名 |
 |---|---|
 | 全量校验创建新聚合 | `NewOrder(...)` |
-| 从持久化恢复(绕过校验) | `UnmarshalOrderFromDatabase(...)` |
+| 从持久化恢复(绕过校验) | `Rehydrate(...)` |
 | 从外部 BC DTO 恢复(罕见) | `UnmarshalOrderFromExternal(...)` |
 
-`Unmarshal*FromDatabase` **只允许 `adapters/{persistence}/` 调用**。
+`Rehydrate` **只允许 `adapters/{persistence}/` 调用**。当同一个包内确实有多个需要恢复的类型且 Go 无法重载函数名时,再用类型名消歧,如 `user.RehydrateAddress(...)`。
 
 ### 3.3 Command / Query 类型
 

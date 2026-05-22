@@ -6,7 +6,7 @@
 ._*
 
 # Custom folder icons
-Icon
+Icon
 
 # Volume root files
 .DocumentRevisions-V100
@@ -19,11 +19,15 @@ Icon
 
 ### Go
 # Binaries for programs and plugins
+/bin/
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
+
+# Vendored dependencies
+/vendor/
 
 # Test binary, built with `go test -c`
 *.test
@@ -36,3 +40,11 @@ go.work.sum
 
 # env file
 .env
+.gocache
+
+# tmp
+/tmp/
+
+# config
+/config/*.toml
+.cache

@@ -43,7 +43,7 @@ type Repositories struct {
 ```
 
 - `app` 层只看到上述非泛型接口;不要暴露 `*sql.Tx`,也不要通过 `context.Context` 传事务
-- `internal/platform/sqltx` 提供泛型事务模板,类型参数是本 BC 的 `Repositories`;`adapters/{persistence}/uow.go` 只负责把同一个 `*sql.Tx` 绑定到本 BC 的 repository 实例
+- `internal/platform/dbtx` 提供泛型事务模板,类型参数是本 BC 的 `Repositories`;`adapters/{persistence}/uow.go` 只负责把同一个 `*sql.Tx` 绑定到本 BC 的 repository 实例
 - tx-bound repository 不得在子 `Save` / `Update{Aggregate}` 内 commit / publish / `ClearEvents`;`PeekEvents` + `Translate` 结果追加到 UoW 级 pending collector,由 `RunInTx` 在外层 **commit 成功后**统一 publish,再按 aggregate 去重后 `ClearEvents`。若 UoW `Commit` 返回 error,不 publish,上层按业务 key 查询确认。详见 [`../cross-context.md`](../cross-context.md) §4.2
 - UoW 内修改既有聚合时仍优先调用 tx-bound `Update{Aggregate}`;它复用外层 `*sql.Tx` 和 pending collector,不自己开启嵌套事务。**不支持嵌套 `RunInTx`**;需要共享事务的写操作必须放进同一个顶层 `RunInTx` 闭包
 

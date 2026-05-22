@@ -202,7 +202,7 @@ myshop/
 │       │   ├── server.go
 │       │   └── middleware.go                # 通用中间件:auth/log/trace/recover
 │       ├── logging/
-│       ├── sqltx/                           # 泛型 RunInTx 模板、PendingCollector
+│       ├── dbtx/                           # 泛型 RunInTx 模板、PendingCollector
 │       └── txerr/                           # CommitOutcomeUnknownError、PostCommitPublishError
 │
 ├── go.mod
@@ -437,7 +437,7 @@ func Run(ctx context.Context, cfg config.Config) error {
   - **typed errors**:`var ErrNotFound = errors.New(...)`,放 `errors.go`
 - 构造与恢复分离:
   - `NewOrder(...)`:做**全量不变量校验**,创建新聚合
-  - `UnmarshalOrderFromDatabase(...)`:**仅恢复状态**,绕过校验,**只允许 `adapters/mysql/` 调用**
+  - `Rehydrate(...)`:**仅恢复状态**,绕过校验,**只允许 `adapters/mysql/` 调用**
 
 **禁止 import**:app / ports / adapters / 其他 BC 的任何包
 
@@ -571,7 +571,7 @@ type Queries struct {
 - `mysql/`、`redis/`:连接池初始化
 - `eventbus/`:进程内事件总线
 - `httpserver/`:HTTP server 与通用中间件(auth / log / trace / recover)
-- `sqltx/`:泛型 `RunInTx` 模板、`PendingCollector`、`PendingPublish`
+- `dbtx/`:泛型 `RunInTx` 模板、`PendingCollector`、`PendingPublish`
 - `txerr/`:事务语义错误,如 `CommitOutcomeUnknownError`、`PostCommitPublishError`
 
 ## 5. Import 规则速查表
