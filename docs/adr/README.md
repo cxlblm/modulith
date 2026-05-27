@@ -13,6 +13,7 @@ ADR 是**为什么这么做**的记录。架构文档(architecture.md 等)说**�
 | [0005](./0005-events-internal-vs-integration.md) | 区分 Domain Event 与 Integration Event | Accepted |
 | [0006](./0006-transaction-and-outbox.md) | 事务边界与事件发布 | Accepted |
 | [0007](./0007-bc-module-factory.md) | BC 自带 Module 工厂,bootstrap 只做进程级编排 | Accepted |
+| [0008](./0008-pricing-bc-lock-pricing.md) | Pricing BC 负责下单锁价与优惠分摊 | Accepted |
 
 ## 何时写 ADR
 

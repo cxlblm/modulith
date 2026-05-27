@@ -8,7 +8,15 @@ import (
 
 func TestNewOrderPlacesOrderAndRecordsEvent(t *testing.T) {
 	o, err := NewOrder("user-1", "addr-1", AddressSnapshot{Receiver: "Ada", Phone: "138", City: "Shanghai", Detail: "Road"}, []Item{
-		{ProductUUID: "product-1", ProductName: "Keyboard", UnitPriceCents: 1000, Qty: 2},
+		{
+			ProductUUID:            "product-1",
+			ProductName:            "Keyboard",
+			OriginalUnitPriceCents: 1000,
+			OriginalSubtotalCents:  2000,
+			DiscountCents:          300,
+			PayableCents:           1700,
+			Qty:                    2,
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewOrder() error = %v", err)
@@ -16,8 +24,8 @@ func TestNewOrderPlacesOrderAndRecordsEvent(t *testing.T) {
 	if o.Status() != StatusPlaced {
 		t.Fatalf("Status() = %q, want %q", o.Status(), StatusPlaced)
 	}
-	if o.TotalCents() != 2000 {
-		t.Fatalf("TotalCents() = %d, want %d", o.TotalCents(), 2000)
+	if o.TotalCents() != 1700 {
+		t.Fatalf("TotalCents() = %d, want %d", o.TotalCents(), 1700)
 	}
 	if len(o.PeekEvents()) != 1 {
 		t.Fatalf("len(PeekEvents()) = %d, want 1", len(o.PeekEvents()))
@@ -26,7 +34,7 @@ func TestNewOrderPlacesOrderAndRecordsEvent(t *testing.T) {
 
 func TestOrderUsesUUIDTerminology(t *testing.T) {
 	o, err := NewOrder("user-1", "addr-1", AddressSnapshot{Receiver: "Ada", Phone: "138", City: "Shanghai", Detail: "Road"}, []Item{
-		{ProductUUID: "product-1", ProductName: "Keyboard", UnitPriceCents: 1000, Qty: 2},
+		validOrderItem(),
 	})
 	if err != nil {
 		t.Fatalf("NewOrder() error = %v", err)
@@ -42,7 +50,7 @@ func TestOrderUsesUUIDTerminology(t *testing.T) {
 
 func TestNewOrderRejectsEmptyAddressSnapshot(t *testing.T) {
 	_, err := NewOrder("user-1", "addr-1", AddressSnapshot{}, []Item{
-		{ProductUUID: "product-1", ProductName: "Keyboard", UnitPriceCents: 1000, Qty: 2},
+		validOrderItem(),
 	})
 	if !errors.Is(err, ErrInvalidOrder) {
 		t.Fatalf("NewOrder() error = %v, want ErrInvalidOrder", err)
@@ -51,7 +59,15 @@ func TestNewOrderRejectsEmptyAddressSnapshot(t *testing.T) {
 
 func TestOrder_MarkPaidIsIdempotent(t *testing.T) {
 	o, err := NewOrder("user-1", "addr-1", AddressSnapshot{Receiver: "Ada", Phone: "138", City: "Shanghai", Detail: "Road"}, []Item{
-		{ProductUUID: "product-1", ProductName: "Keyboard", UnitPriceCents: 1000, Qty: 1},
+		{
+			ProductUUID:            "product-1",
+			ProductName:            "Keyboard",
+			OriginalUnitPriceCents: 1000,
+			OriginalSubtotalCents:  1000,
+			DiscountCents:          0,
+			PayableCents:           1000,
+			Qty:                    1,
+		},
 	})
 	if err != nil {
 		t.Fatalf("NewOrder() error = %v", err)
@@ -65,5 +81,58 @@ func TestOrder_MarkPaidIsIdempotent(t *testing.T) {
 	}
 	if o.Status() != StatusPaid {
 		t.Fatalf("Status() = %q, want %q", o.Status(), StatusPaid)
+	}
+}
+
+func TestNewOrderRejectsInconsistentPricingSnapshot(t *testing.T) {
+	_, err := NewOrder("user-1", "addr-1", AddressSnapshot{Receiver: "Ada", Phone: "138", City: "Shanghai", Detail: "Road"}, []Item{
+		{
+			ProductUUID:            "product-1",
+			ProductName:            "Keyboard",
+			OriginalUnitPriceCents: 1000,
+			OriginalSubtotalCents:  2000,
+			DiscountCents:          300,
+			PayableCents:           1800,
+			Qty:                    2,
+		},
+	})
+
+	if !errors.Is(err, ErrInvalidOrder) {
+		t.Fatalf("NewOrder() error = %v, want ErrInvalidOrder", err)
+	}
+}
+
+func TestOrderItemsDefensivelyCopyAppliedPromotions(t *testing.T) {
+	item := validOrderItem()
+	item.AppliedPromotions = []AppliedPromotion{{UUID: "promo-1", Name: "Spend 100 save 10", DiscountCents: 10}}
+	o, err := NewOrder(
+		"user-1",
+		"addr-1",
+		AddressSnapshot{Receiver: "Ada", Phone: "138", City: "Shanghai", Detail: "Road"},
+		[]Item{item},
+	)
+	if err != nil {
+		t.Fatalf("NewOrder() error = %v", err)
+	}
+
+	item.AppliedPromotions[0].Name = "mutated"
+	got := o.Items()
+	got[0].AppliedPromotions[0].Name = "also-mutated"
+
+	again := o.Items()
+	if again[0].AppliedPromotions[0].Name != "Spend 100 save 10" {
+		t.Fatalf("promotion name = %q, want original snapshot", again[0].AppliedPromotions[0].Name)
+	}
+}
+
+func validOrderItem() Item {
+	return Item{
+		ProductUUID:            "product-1",
+		ProductName:            "Keyboard",
+		OriginalUnitPriceCents: 1000,
+		OriginalSubtotalCents:  2000,
+		DiscountCents:          300,
+		PayableCents:           1700,
+		Qty:                    2,
 	}
 }

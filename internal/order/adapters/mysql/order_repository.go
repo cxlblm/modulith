@@ -33,14 +33,19 @@ type OrderModel struct {
 }
 
 type OrderItemModel struct {
-	ID             uint64 `gorm:"primaryKey;autoIncrement;type:bigint unsigned"`
-	OrderUUID      string `gorm:"type:char(36);not null;index"`
-	ProductUUID    string `gorm:"type:char(36);not null"`
-	ProductName    string `gorm:"size:255;not null"`
-	UnitPriceCents int64  `gorm:"not null"`
-	Qty            int    `gorm:"not null"`
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID                     uint64 `gorm:"primaryKey;autoIncrement;type:bigint unsigned"`
+	OrderUUID              string `gorm:"type:char(36);not null;index"`
+	ProductUUID            string `gorm:"type:char(36);not null"`
+	ProductName            string `gorm:"size:255;not null"`
+	UnitPriceCents         int64  `gorm:"not null"`
+	OriginalUnitPriceCents int64  `gorm:"not null"`
+	OriginalSubtotalCents  int64  `gorm:"not null"`
+	DiscountCents          int64  `gorm:"not null"`
+	PayableCents           int64  `gorm:"not null"`
+	Qty                    int    `gorm:"not null"`
+	AppliedPromotionsJSON  string `gorm:"type:text;not null"`
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
 }
 
 type OrderRepository struct {
@@ -71,12 +76,21 @@ func (r *OrderRepository) Save(ctx context.Context, o *orderdomain.Order) error 
 			return nil, fmt.Errorf("create order: %w", err)
 		}
 		for _, item := range o.Items() {
+			promotionsJSON, err := encodePromotions(item.AppliedPromotions)
+			if err != nil {
+				return nil, err
+			}
 			itemModel := OrderItemModel{
-				OrderUUID:      o.UUID().String(),
-				ProductUUID:    item.ProductUUID,
-				ProductName:    item.ProductName,
-				UnitPriceCents: item.UnitPriceCents,
-				Qty:            item.Qty,
+				OrderUUID:              o.UUID().String(),
+				ProductUUID:            item.ProductUUID,
+				ProductName:            item.ProductName,
+				UnitPriceCents:         item.OriginalUnitPriceCents,
+				OriginalUnitPriceCents: item.OriginalUnitPriceCents,
+				OriginalSubtotalCents:  item.OriginalSubtotalCents,
+				DiscountCents:          item.DiscountCents,
+				PayableCents:           item.PayableCents,
+				Qty:                    item.Qty,
+				AppliedPromotionsJSON:  promotionsJSON,
 			}
 			if err := tx.Create(&itemModel).Error; err != nil {
 				return nil, fmt.Errorf("create order item: %w", err)
@@ -98,7 +112,7 @@ func (r *OrderRepository) FindByUUID(ctx context.Context, uuid orderdomain.Order
 	if err := r.db.WithContext(ctx).Where("order_uuid = ?", model.UUID).Order("id").Find(&itemModels).Error; err != nil {
 		return nil, fmt.Errorf("find order items: %w", err)
 	}
-	return toOrder(model, itemModels), nil
+	return toOrder(model, itemModels)
 }
 
 func (r *OrderRepository) MarkPaid(ctx context.Context, uuid orderdomain.OrderUUID, paymentUUID string) error {
@@ -195,7 +209,7 @@ func findOrder(ctx context.Context, tx *gorm.DB, uuid orderdomain.OrderUUID) (*o
 	if err := tx.WithContext(ctx).Where("order_uuid = ?", model.UUID).Order("id").Find(&items).Error; err != nil {
 		return nil, fmt.Errorf("find order items: %w", err)
 	}
-	return toOrder(model, items), nil
+	return toOrder(model, items)
 }
 
 func orderModel(o *orderdomain.Order) OrderModel {
@@ -215,14 +229,26 @@ func orderModel(o *orderdomain.Order) OrderModel {
 	}
 }
 
-func toOrder(model OrderModel, itemModels []OrderItemModel) *orderdomain.Order {
+func toOrder(model OrderModel, itemModels []OrderItemModel) (*orderdomain.Order, error) {
 	items := make([]orderdomain.Item, 0, len(itemModels))
 	for _, item := range itemModels {
+		promotions, err := decodePromotions(item.AppliedPromotionsJSON)
+		if err != nil {
+			return nil, err
+		}
+		unitPrice := item.OriginalUnitPriceCents
+		if unitPrice == 0 {
+			unitPrice = item.UnitPriceCents
+		}
 		items = append(items, orderdomain.Item{
-			ProductUUID:    item.ProductUUID,
-			ProductName:    item.ProductName,
-			UnitPriceCents: item.UnitPriceCents,
-			Qty:            item.Qty,
+			ProductUUID:            item.ProductUUID,
+			ProductName:            item.ProductName,
+			OriginalUnitPriceCents: unitPrice,
+			OriginalSubtotalCents:  item.OriginalSubtotalCents,
+			DiscountCents:          item.DiscountCents,
+			PayableCents:           item.PayableCents,
+			Qty:                    item.Qty,
+			AppliedPromotions:      promotions,
 		})
 	}
 	return orderdomain.Rehydrate(
@@ -235,5 +261,30 @@ func toOrder(model OrderModel, itemModels []OrderItemModel) *orderdomain.Order {
 		model.TotalCents,
 		model.PaymentID,
 		model.ShipmentID,
-	)
+	), nil
+}
+
+func encodePromotions(promotions []orderdomain.AppliedPromotion) (string, error) {
+	if promotions == nil {
+		promotions = []orderdomain.AppliedPromotion{}
+	}
+	payload, err := json.Marshal(promotions)
+	if err != nil {
+		return "", fmt.Errorf("encode order item promotions: %w", err)
+	}
+	return string(payload), nil
+}
+
+func decodePromotions(payload string) ([]orderdomain.AppliedPromotion, error) {
+	if payload == "" {
+		return []orderdomain.AppliedPromotion{}, nil
+	}
+	var promotions []orderdomain.AppliedPromotion
+	if err := json.Unmarshal([]byte(payload), &promotions); err != nil {
+		return nil, fmt.Errorf("decode order item promotions: %w", err)
+	}
+	if promotions == nil {
+		return []orderdomain.AppliedPromotion{}, nil
+	}
+	return promotions, nil
 }

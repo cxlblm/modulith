@@ -15,14 +15,7 @@ type Repositories struct {
 }
 
 type ProductsService interface {
-	GetProduct(ctx context.Context, productID string) (ProductInfo, error)
 	ReserveStock(ctx context.Context, productID string, orderID string, qty int) error
-}
-
-type ProductInfo struct {
-	ID         string
-	Name       string
-	PriceCents int64
 }
 
 type AddressService interface {
@@ -40,4 +33,43 @@ type AddressInfo struct {
 
 type UserEligibilityService interface {
 	EnsureCanPlaceOrder(ctx context.Context, userID string) error
+}
+
+type PricingService interface {
+	CalculateOrderPricing(ctx context.Context, req PricingRequest) (PricingResult, error)
+}
+
+type PricingRequest struct {
+	UserID string
+	Items  []PricingRequestItem
+}
+
+type PricingRequestItem struct {
+	ProductID string
+	Qty       int
+}
+
+type AppliedPromotionResult struct {
+	UUID          string
+	Name          string
+	DiscountCents int64
+}
+
+type PricingItemResult struct {
+	ProductID              string
+	ProductName            string
+	Qty                    int
+	OriginalUnitPriceCents int64
+	OriginalSubtotalCents  int64
+	DiscountCents          int64
+	PayableCents           int64
+	AppliedPromotions      []AppliedPromotionResult
+}
+
+type PricingResult struct {
+	OriginalTotalCents int64
+	DiscountTotalCents int64
+	PayableTotalCents  int64
+	Items              []PricingItemResult
+	AppliedPromotions  []AppliedPromotionResult
 }

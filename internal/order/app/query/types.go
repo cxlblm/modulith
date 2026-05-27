@@ -24,10 +24,21 @@ type AddressDTO struct {
 }
 
 type OrderItemDTO struct {
-	ProductID      string    `json:"product_id"`
-	ProductName    string    `json:"product_name"`
-	UnitPriceCents int64     `json:"unit_price_cents"`
-	Qty            int       `json:"qty"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ProductID              string                `json:"product_id"`
+	ProductName            string                `json:"product_name"`
+	UnitPriceCents         int64                 `json:"unit_price_cents"`
+	OriginalUnitPriceCents int64                 `json:"original_unit_price_cents"`
+	OriginalSubtotalCents  int64                 `json:"original_subtotal_cents"`
+	DiscountCents          int64                 `json:"discount_cents"`
+	PayableCents           int64                 `json:"payable_cents"`
+	Qty                    int                   `json:"qty"`
+	AppliedPromotions      []AppliedPromotionDTO `json:"applied_promotions"`
+	CreatedAt              time.Time             `json:"created_at"`
+	UpdatedAt              time.Time             `json:"updated_at"`
+}
+
+type AppliedPromotionDTO struct {
+	UUID          string `json:"uuid"`
+	Name          string `json:"name"`
+	DiscountCents int64  `json:"discount_cents"`
 }

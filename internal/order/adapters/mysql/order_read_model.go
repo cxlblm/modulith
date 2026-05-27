@@ -72,13 +72,26 @@ func orderDTOs(models []OrderModel, itemModels []OrderItemModel) []query.OrderDT
 func orderDTO(model OrderModel, itemModels []OrderItemModel) query.OrderDTO {
 	items := make([]query.OrderItemDTO, 0, len(itemModels))
 	for _, item := range itemModels {
+		promotions, err := decodeQueryPromotions(item.AppliedPromotionsJSON)
+		if err != nil {
+			promotions = []query.AppliedPromotionDTO{}
+		}
+		unitPrice := item.OriginalUnitPriceCents
+		if unitPrice == 0 {
+			unitPrice = item.UnitPriceCents
+		}
 		items = append(items, query.OrderItemDTO{
-			ProductID:      item.ProductUUID,
-			ProductName:    item.ProductName,
-			UnitPriceCents: item.UnitPriceCents,
-			Qty:            item.Qty,
-			CreatedAt:      item.CreatedAt,
-			UpdatedAt:      item.UpdatedAt,
+			ProductID:              item.ProductUUID,
+			ProductName:            item.ProductName,
+			UnitPriceCents:         unitPrice,
+			OriginalUnitPriceCents: unitPrice,
+			OriginalSubtotalCents:  item.OriginalSubtotalCents,
+			DiscountCents:          item.DiscountCents,
+			PayableCents:           item.PayableCents,
+			Qty:                    item.Qty,
+			AppliedPromotions:      promotions,
+			CreatedAt:              item.CreatedAt,
+			UpdatedAt:              item.UpdatedAt,
 		})
 	}
 	return query.OrderDTO{
@@ -94,4 +107,20 @@ func orderDTO(model OrderModel, itemModels []OrderItemModel) query.OrderDTO {
 		CreatedAt:  model.CreatedAt,
 		UpdatedAt:  model.UpdatedAt,
 	}
+}
+
+func decodeQueryPromotions(payload string) ([]query.AppliedPromotionDTO, error) {
+	promotions, err := decodePromotions(payload)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]query.AppliedPromotionDTO, 0, len(promotions))
+	for _, promo := range promotions {
+		out = append(out, query.AppliedPromotionDTO{
+			UUID:          promo.UUID,
+			Name:          promo.Name,
+			DiscountCents: promo.DiscountCents,
+		})
+	}
+	return out, nil
 }

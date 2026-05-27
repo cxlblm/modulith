@@ -35,18 +35,52 @@ func (s *fakeAddressService) GetAddress(context.Context, string, string) (Addres
 }
 
 type fakeProductsService struct {
-	getCalls     int
 	reserveCalls int
-}
-
-func (s *fakeProductsService) GetProduct(context.Context, string) (ProductInfo, error) {
-	s.getCalls++
-	return ProductInfo{ID: "product-1", Name: "Keyboard", PriceCents: 1000}, nil
 }
 
 func (s *fakeProductsService) ReserveStock(context.Context, string, string, int) error {
 	s.reserveCalls++
 	return nil
+}
+
+type fakePricingService struct {
+	err    error
+	calls  int
+	result PricingResult
+}
+
+func (s *fakePricingService) CalculateOrderPricing(context.Context, PricingRequest) (PricingResult, error) {
+	s.calls++
+	if s.err != nil {
+		return PricingResult{}, s.err
+	}
+	if len(s.result.Items) != 0 {
+		return s.result, nil
+	}
+	return PricingResult{
+		OriginalTotalCents: 2000,
+		DiscountTotalCents: 300,
+		PayableTotalCents:  1700,
+		Items: []PricingItemResult{{
+			ProductID:              "product-1",
+			ProductName:            "Keyboard",
+			Qty:                    2,
+			OriginalUnitPriceCents: 1000,
+			OriginalSubtotalCents:  2000,
+			DiscountCents:          300,
+			PayableCents:           1700,
+			AppliedPromotions: []AppliedPromotionResult{{
+				UUID:          "promo-1",
+				Name:          "Spend 2000 save 300",
+				DiscountCents: 300,
+			}},
+		}},
+		AppliedPromotions: []AppliedPromotionResult{{
+			UUID:          "promo-1",
+			Name:          "Spend 2000 save 300",
+			DiscountCents: 300,
+		}},
+	}, nil
 }
 
 type fakeOrderRepository struct {
@@ -77,8 +111,9 @@ func TestPlaceOrder_DisabledUserReturnsBeforeSideEffects(t *testing.T) {
 	users := &fakeUserEligibilityService{err: disabledErr}
 	addresses := &fakeAddressService{}
 	products := &fakeProductsService{}
+	pricing := &fakePricingService{}
 	orders := &fakeOrderRepository{}
-	h := PlaceOrderHandler{Orders: orders, Products: products, Addresses: addresses, Users: users}
+	h := PlaceOrderHandler{Orders: orders, Products: products, Addresses: addresses, Users: users, Pricing: pricing}
 
 	_, err := h.Handle(context.Background(), PlaceOrder{
 		UserID:    "user-1",
@@ -95,8 +130,8 @@ func TestPlaceOrder_DisabledUserReturnsBeforeSideEffects(t *testing.T) {
 	if addresses.calls != 0 {
 		t.Fatalf("address calls = %d, want 0", addresses.calls)
 	}
-	if products.getCalls != 0 {
-		t.Fatalf("product get calls = %d, want 0", products.getCalls)
+	if pricing.calls != 0 {
+		t.Fatalf("pricing calls = %d, want 0", pricing.calls)
 	}
 	if products.reserveCalls != 0 {
 		t.Fatalf("reserve calls = %d, want 0", products.reserveCalls)
@@ -110,8 +145,9 @@ func TestPlaceOrder_ActiveUserPlacesOrder(t *testing.T) {
 	users := &fakeUserEligibilityService{}
 	addresses := &fakeAddressService{}
 	products := &fakeProductsService{}
+	pricing := &fakePricingService{}
 	orders := &fakeOrderRepository{}
-	h := PlaceOrderHandler{Orders: orders, Products: products, Addresses: addresses, Users: users}
+	h := PlaceOrderHandler{Orders: orders, Products: products, Addresses: addresses, Users: users, Pricing: pricing}
 
 	result, err := h.Handle(context.Background(), PlaceOrder{
 		UserID:    "user-1",
@@ -131,8 +167,8 @@ func TestPlaceOrder_ActiveUserPlacesOrder(t *testing.T) {
 	if addresses.calls != 1 {
 		t.Fatalf("address calls = %d, want 1", addresses.calls)
 	}
-	if products.getCalls != 1 {
-		t.Fatalf("product get calls = %d, want 1", products.getCalls)
+	if pricing.calls != 1 {
+		t.Fatalf("pricing calls = %d, want 1", pricing.calls)
 	}
 	if products.reserveCalls != 1 {
 		t.Fatalf("reserve calls = %d, want 1", products.reserveCalls)
@@ -142,5 +178,37 @@ func TestPlaceOrder_ActiveUserPlacesOrder(t *testing.T) {
 	}
 	if orders.order == nil {
 		t.Fatal("saved order is nil")
+	}
+	if orders.order.TotalCents() != 1700 {
+		t.Fatalf("saved order total = %d, want 1700", orders.order.TotalCents())
+	}
+	if got := orders.order.Items()[0].AppliedPromotions[0].UUID; got != "promo-1" {
+		t.Fatalf("saved order promotion = %q, want promo-1", got)
+	}
+}
+
+func TestPlaceOrder_PricingErrorReturnsBeforeStockReservationAndSave(t *testing.T) {
+	pricingErr := errors.New("pricing unavailable")
+	users := &fakeUserEligibilityService{}
+	addresses := &fakeAddressService{}
+	products := &fakeProductsService{}
+	pricing := &fakePricingService{err: pricingErr}
+	orders := &fakeOrderRepository{}
+	h := PlaceOrderHandler{Orders: orders, Products: products, Addresses: addresses, Users: users, Pricing: pricing}
+
+	_, err := h.Handle(context.Background(), PlaceOrder{
+		UserID:    "user-1",
+		AddressID: "address-1",
+		Items:     []PlaceOrderItem{{ProductID: "product-1", Qty: 2}},
+	})
+
+	if !errors.Is(err, pricingErr) {
+		t.Fatalf("Handle() error = %v, want %v", err, pricingErr)
+	}
+	if products.reserveCalls != 0 {
+		t.Fatalf("reserve calls = %d, want 0", products.reserveCalls)
+	}
+	if orders.saveCalls != 0 {
+		t.Fatalf("save calls = %d, want 0", orders.saveCalls)
 	}
 }

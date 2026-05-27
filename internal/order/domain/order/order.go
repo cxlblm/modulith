@@ -21,11 +21,21 @@ type AddressSnapshot struct {
 	Detail   string
 }
 
+type AppliedPromotion struct {
+	UUID          string
+	Name          string
+	DiscountCents int64
+}
+
 type Item struct {
-	ProductUUID    string
-	ProductName    string
-	UnitPriceCents int64
-	Qty            int
+	ProductUUID            string
+	ProductName            string
+	OriginalUnitPriceCents int64
+	OriginalSubtotalCents  int64
+	DiscountCents          int64
+	PayableCents           int64
+	Qty                    int
+	AppliedPromotions      []AppliedPromotion
 }
 
 type Order struct {
@@ -50,17 +60,17 @@ func NewOrder(userUUID string, addressUUID string, address AddressSnapshot, item
 	}
 	var total int64
 	for _, item := range items {
-		if item.ProductUUID == "" || item.ProductName == "" || item.UnitPriceCents <= 0 || item.Qty <= 0 {
+		if !validItem(item) {
 			return nil, ErrInvalidOrder
 		}
-		total += item.UnitPriceCents * int64(item.Qty)
+		total += item.PayableCents
 	}
 	o := &Order{
 		uuid:            OrderUUID(bizid.New()),
 		userUUID:        userUUID,
 		addressUUID:     addressUUID,
 		addressSnapshot: address,
-		items:           append([]Item(nil), items...),
+		items:           copyItems(items),
 		status:          StatusPlaced,
 		totalCents:      total,
 	}
@@ -74,7 +84,7 @@ func Rehydrate(uuid OrderUUID, userUUID string, addressUUID string, address Addr
 		userUUID:        userUUID,
 		addressUUID:     addressUUID,
 		addressSnapshot: address,
-		items:           append([]Item(nil), items...),
+		items:           copyItems(items),
 		status:          status,
 		totalCents:      totalCents,
 		paymentUUID:     paymentUUID,
@@ -111,10 +121,42 @@ func (o *Order) UUID() OrderUUID                  { return o.uuid }
 func (o *Order) UserUUID() string                 { return o.userUUID }
 func (o *Order) AddressUUID() string              { return o.addressUUID }
 func (o *Order) AddressSnapshot() AddressSnapshot { return o.addressSnapshot }
-func (o *Order) Items() []Item                    { return append([]Item(nil), o.items...) }
+func (o *Order) Items() []Item                    { return copyItems(o.items) }
 func (o *Order) Status() Status                   { return o.status }
 func (o *Order) TotalCents() int64                { return o.totalCents }
 func (o *Order) PaymentUUID() string              { return o.paymentUUID }
 func (o *Order) ShipmentUUID() string             { return o.shipmentUUID }
 func (o *Order) PeekEvents() []DomainEvent        { return append([]DomainEvent(nil), o.events...) }
 func (o *Order) ClearEvents()                     { o.events = nil }
+
+func validItem(item Item) bool {
+	if item.ProductUUID == "" || item.ProductName == "" || item.OriginalUnitPriceCents <= 0 || item.Qty <= 0 {
+		return false
+	}
+	originalSubtotal := item.OriginalUnitPriceCents * int64(item.Qty)
+	if item.OriginalSubtotalCents != originalSubtotal {
+		return false
+	}
+	if item.DiscountCents < 0 || item.PayableCents < 0 {
+		return false
+	}
+	if item.PayableCents != item.OriginalSubtotalCents-item.DiscountCents {
+		return false
+	}
+	for _, promo := range item.AppliedPromotions {
+		if promo.UUID == "" || promo.Name == "" || promo.DiscountCents <= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func copyItems(items []Item) []Item {
+	out := make([]Item, 0, len(items))
+	for _, item := range items {
+		copied := item
+		copied.AppliedPromotions = append([]AppliedPromotion(nil), item.AppliedPromotions...)
+		out = append(out, copied)
+	}
+	return out
+}

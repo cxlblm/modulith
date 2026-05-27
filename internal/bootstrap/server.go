@@ -13,6 +13,7 @@ import (
 	"modular_monolith/internal/fulfillment"
 	"modular_monolith/internal/order"
 	"modular_monolith/internal/order/adapters/accountclient"
+	"modular_monolith/internal/order/adapters/pricingclient"
 	"modular_monolith/internal/order/adapters/shopclient"
 	"modular_monolith/internal/payment"
 	"modular_monolith/internal/platform/config"
@@ -20,6 +21,8 @@ import (
 	"modular_monolith/internal/platform/httpserver"
 	"modular_monolith/internal/platform/logging"
 	"modular_monolith/internal/platform/mysql"
+	"modular_monolith/internal/pricing"
+	pricingshopclient "modular_monolith/internal/pricing/adapters/shopclient"
 	"modular_monolith/internal/shop"
 )
 
@@ -74,10 +77,16 @@ func mountBusiness(ctx context.Context, server *httpserver.Server, db *gorm.DB, 
 	if err != nil {
 		return fmt.Errorf("create shop module: %w", err)
 	}
+	productCatalog := pricingshopclient.NewProductCatalogService(shopMod.PortsModule)
+	pricingMod, err := pricing.NewModule(pricing.Deps{DB: db, Logger: logger, Products: productCatalog})
+	if err != nil {
+		return fmt.Errorf("create pricing module: %w", err)
+	}
 
 	products := shopclient.NewProductsService(shopMod.PortsModule)
 	addresses := accountclient.NewAddressService(accountMod.PortsModule)
 	users := accountclient.NewUserEligibilityService(accountMod.PortsModule)
+	pricingService := pricingclient.NewPricingService(pricingMod.PortsModule)
 	orderMod, err := order.NewModule(order.Deps{
 		DB:        db,
 		Logger:    logger,
@@ -85,6 +94,7 @@ func mountBusiness(ctx context.Context, server *httpserver.Server, db *gorm.DB, 
 		Products:  products,
 		Addresses: addresses,
 		Users:     users,
+		Pricing:   pricingService,
 	})
 	if err != nil {
 		return fmt.Errorf("create order module: %w", err)
@@ -115,6 +125,7 @@ func allModels() []any {
 	var models []any
 	models = append(models, account.Models()...)
 	models = append(models, shop.Models()...)
+	models = append(models, pricing.Models()...)
 	models = append(models, order.Models()...)
 	models = append(models, payment.Models()...)
 	models = append(models, fulfillment.Models()...)

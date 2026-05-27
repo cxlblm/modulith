@@ -57,6 +57,22 @@ func TestOrderRepositorySave_DefaultsToAutomaticTransaction(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("persisted orders = %d, want 1", count)
 	}
+
+	var item OrderItemModel
+	if err := db.First(&item, "order_uuid = ?", o.UUID().String()).Error; err != nil {
+		t.Fatalf("find item: %v", err)
+	}
+	if item.OriginalUnitPriceCents != 1000 || item.OriginalSubtotalCents != 2000 || item.DiscountCents != 300 || item.PayableCents != 1700 {
+		t.Fatalf("item pricing = unit %d original %d discount %d payable %d, want 1000/2000/300/1700",
+			item.OriginalUnitPriceCents,
+			item.OriginalSubtotalCents,
+			item.DiscountCents,
+			item.PayableCents,
+		)
+	}
+	if item.AppliedPromotionsJSON == "" {
+		t.Fatal("AppliedPromotionsJSON is empty")
+	}
 }
 
 func TestOrderRepositorySave_WithTxCollectsPendingEvents(t *testing.T) {
@@ -178,10 +194,18 @@ func newRepositoryTestOrder(t *testing.T) *orderdomain.Order {
 			Detail:   "Road 1",
 		},
 		[]orderdomain.Item{{
-			ProductUUID:    "product-1",
-			ProductName:    "Keyboard",
-			UnitPriceCents: 1000,
-			Qty:            2,
+			ProductUUID:            "product-1",
+			ProductName:            "Keyboard",
+			OriginalUnitPriceCents: 1000,
+			OriginalSubtotalCents:  2000,
+			DiscountCents:          300,
+			PayableCents:           1700,
+			Qty:                    2,
+			AppliedPromotions: []orderdomain.AppliedPromotion{{
+				UUID:          "promo-1",
+				Name:          "Spend 2000 save 300",
+				DiscountCents: 300,
+			}},
 		}},
 	)
 	if err != nil {
