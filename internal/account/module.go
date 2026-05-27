@@ -35,9 +35,10 @@ func NewModule(deps Deps) (*Module, error) {
 			DeleteAddress: command.DeleteAddressHandler{Users: users},
 		},
 		Queries: app.Queries{
-			GetUser:       query.GetUserHandler{ReadModel: readModel},
-			ListAddresses: query.ListAddressesHandler{ReadModel: readModel},
-			GetAddress:    query.GetAddressHandler{ReadModel: readModel},
+			GetUser:          query.GetUserHandler{ReadModel: readModel},
+			EnsureUserActive: query.EnsureUserActiveHandler{ReadModel: readModel},
+			ListAddresses:    query.ListAddressesHandler{ReadModel: readModel},
+			GetAddress:       query.GetAddressHandler{ReadModel: readModel},
 		},
 	}
 	return &Module{App: application, PortsModule: accountmod.NewAccountModule(application)}, nil

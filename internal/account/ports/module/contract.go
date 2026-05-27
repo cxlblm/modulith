@@ -9,6 +9,7 @@ import (
 
 type AccountModule interface {
 	GetAddress(ctx context.Context, userID string, addressID string) (AddressDTO, error)
+	EnsureUserActive(ctx context.Context, userID string) error
 }
 
 type accountModule struct {
@@ -32,4 +33,8 @@ func (m *accountModule) GetAddress(ctx context.Context, userID string, addressID
 		City:     dto.City,
 		Detail:   dto.Detail,
 	}, nil
+}
+
+func (m *accountModule) EnsureUserActive(ctx context.Context, userID string) error {
+	return m.app.Queries.EnsureUserActive.Handle(ctx, query.EnsureUserActive{UserID: userID})
 }

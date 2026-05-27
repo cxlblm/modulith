@@ -10,10 +10,18 @@ type AddressUUID string
 
 func (uuid AddressUUID) String() string { return string(uuid) }
 
+type Status string
+
+const (
+	StatusActive   Status = "active"
+	StatusDisabled Status = "disabled"
+)
+
 type User struct {
 	uuid      UserUUID
 	name      string
 	email     string
+	status    Status
 	addresses []Address
 }
 
@@ -30,11 +38,11 @@ func NewUser(name string, email string) (*User, error) {
 	if name == "" || email == "" {
 		return nil, ErrInvalidUser
 	}
-	return &User{uuid: UserUUID(bizid.New()), name: name, email: email}, nil
+	return &User{uuid: UserUUID(bizid.New()), name: name, email: email, status: StatusActive}, nil
 }
 
-func Rehydrate(uuid UserUUID, name string, email string, addresses []Address) *User {
-	return &User{uuid: uuid, name: name, email: email, addresses: append([]Address(nil), addresses...)}
+func Rehydrate(uuid UserUUID, name string, email string, status Status, addresses []Address) *User {
+	return &User{uuid: uuid, name: name, email: email, status: status, addresses: append([]Address(nil), addresses...)}
 }
 
 func NewAddress(userUUID UserUUID, receiver string, phone string, city string, detail string) (Address, error) {
@@ -60,7 +68,15 @@ func (u *User) AddAddress(receiver string, phone string, city string, detail str
 func (u *User) UUID() UserUUID       { return u.uuid }
 func (u *User) Name() string         { return u.name }
 func (u *User) Email() string        { return u.email }
+func (u *User) Status() Status       { return u.status }
 func (u *User) Addresses() []Address { return append([]Address(nil), u.addresses...) }
+
+func (u *User) EnsureActive() error {
+	if u.status == StatusDisabled {
+		return ErrUserDisabled
+	}
+	return nil
+}
 
 func (a Address) UUID() AddressUUID  { return a.uuid }
 func (a Address) UserUUID() UserUUID { return a.userUUID }

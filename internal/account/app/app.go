@@ -18,7 +18,8 @@ type Commands struct {
 }
 
 type Queries struct {
-	GetUser       query.GetUserHandler
-	ListAddresses query.ListAddressesHandler
-	GetAddress    query.GetAddressHandler
+	GetUser          query.GetUserHandler
+	EnsureUserActive query.EnsureUserActiveHandler
+	ListAddresses    query.ListAddressesHandler
+	GetAddress       query.GetAddressHandler
 }

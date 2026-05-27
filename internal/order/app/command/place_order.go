@@ -26,9 +26,13 @@ type PlaceOrderHandler struct {
 	Orders    orderdomain.Repository
 	Products  ProductsService
 	Addresses AddressService
+	Users     UserEligibilityService
 }
 
 func (h PlaceOrderHandler) Handle(ctx context.Context, cmd PlaceOrder) (PlaceOrderResult, error) {
+	if err := h.Users.EnsureCanPlaceOrder(ctx, cmd.UserID); err != nil {
+		return PlaceOrderResult{}, err
+	}
 	address, err := h.Addresses.GetAddress(ctx, cmd.UserID, cmd.AddressID)
 	if err != nil {
 		return PlaceOrderResult{}, err

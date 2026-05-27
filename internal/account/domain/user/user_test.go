@@ -1,6 +1,7 @@
 package user
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -57,5 +58,29 @@ func TestAddressUsesUUIDTerminology(t *testing.T) {
 	}
 	if _, ok := reflect.TypeOf(address).MethodByName("ID"); ok {
 		t.Fatal("Address exposes ID(), want UUID()")
+	}
+}
+
+func TestNewUserDefaultsToActive(t *testing.T) {
+	u, err := NewUser("Ada", "ada@example.com")
+	if err != nil {
+		t.Fatalf("NewUser() error = %v", err)
+	}
+
+	if u.Status() != StatusActive {
+		t.Fatalf("Status() = %q, want %q", u.Status(), StatusActive)
+	}
+	if err := u.EnsureActive(); err != nil {
+		t.Fatalf("EnsureActive() error = %v", err)
+	}
+}
+
+func TestUser_EnsureActiveReturnsDisabledError(t *testing.T) {
+	u := Rehydrate(UserUUID("user-uuid"), "Ada", "ada@example.com", StatusDisabled, nil)
+
+	err := u.EnsureActive()
+
+	if !errors.Is(err, ErrUserDisabled) {
+		t.Fatalf("EnsureActive() error = %v, want ErrUserDisabled", err)
 	}
 }

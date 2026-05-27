@@ -22,6 +22,7 @@ type Deps struct {
 	EventBus  eventbus.Bus
 	Products  command.ProductsService
 	Addresses command.AddressService
+	Users     command.UserEligibilityService
 }
 
 type Module struct {
@@ -35,7 +36,7 @@ func NewModule(deps Deps) (*Module, error) {
 	readModel := mysql.NewReadModel(deps.DB)
 	application := &app.Application{
 		Commands: app.Commands{
-			PlaceOrder:  command.PlaceOrderHandler{Orders: orders, Products: deps.Products, Addresses: deps.Addresses},
+			PlaceOrder:  command.PlaceOrderHandler{Orders: orders, Products: deps.Products, Addresses: deps.Addresses, Users: deps.Users},
 			MarkPaid:    command.MarkPaidHandler{Orders: orders},
 			MarkShipped: command.MarkShippedHandler{Orders: orders},
 		},

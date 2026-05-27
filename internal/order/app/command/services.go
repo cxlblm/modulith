@@ -37,3 +37,7 @@ type AddressInfo struct {
 	City     string
 	Detail   string
 }
+
+type UserEligibilityService interface {
+	EnsureCanPlaceOrder(ctx context.Context, userID string) error
+}

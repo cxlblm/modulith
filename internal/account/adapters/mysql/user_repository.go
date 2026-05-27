@@ -17,6 +17,7 @@ type UserModel struct {
 	UUID      string `gorm:"type:char(36);not null;uniqueIndex"`
 	Name      string `gorm:"size:255;not null"`
 	Email     string `gorm:"size:255;not null;uniqueIndex"`
+	Status    string `gorm:"size:32;not null;default:active;index"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -52,7 +53,7 @@ func Models() []any {
 
 func (r *UserRepository) Save(ctx context.Context, u *user.User) error {
 	return r.executeWrite(ctx, "account.Repository.Save", func(tx *gorm.DB) error {
-		model := UserModel{UUID: u.UUID().String(), Name: u.Name(), Email: u.Email()}
+		model := UserModel{UUID: u.UUID().String(), Name: u.Name(), Email: u.Email(), Status: string(u.Status())}
 		if err := tx.Create(&model).Error; err != nil {
 			return fmt.Errorf("create user: %w", err)
 		}
@@ -68,7 +69,7 @@ func (r *UserRepository) FindByUUID(ctx context.Context, uuid user.UserUUID) (*u
 		}
 		return nil, fmt.Errorf("find user: %w", err)
 	}
-	return user.Rehydrate(user.UserUUID(model.UUID), model.Name, model.Email, nil), nil
+	return user.Rehydrate(user.UserUUID(model.UUID), model.Name, model.Email, user.Status(model.Status), nil), nil
 }
 
 func (r *UserRepository) SaveAddress(ctx context.Context, address user.Address) error {

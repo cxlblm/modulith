@@ -31,6 +31,7 @@ func (r *ReadModel) GetUser(ctx context.Context, userID string) (query.UserDTO, 
 		ID:        model.UUID,
 		Name:      model.Name,
 		Email:     model.Email,
+		Status:    model.Status,
 		CreatedAt: model.CreatedAt,
 		UpdatedAt: model.UpdatedAt,
 	}, nil

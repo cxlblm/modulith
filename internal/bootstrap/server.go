@@ -77,12 +77,14 @@ func mountBusiness(ctx context.Context, server *httpserver.Server, db *gorm.DB, 
 
 	products := shopclient.NewProductsService(shopMod.PortsModule)
 	addresses := accountclient.NewAddressService(accountMod.PortsModule)
+	users := accountclient.NewUserEligibilityService(accountMod.PortsModule)
 	orderMod, err := order.NewModule(order.Deps{
 		DB:        db,
 		Logger:    logger,
 		EventBus:  bus,
 		Products:  products,
 		Addresses: addresses,
+		Users:     users,
 	})
 	if err != nil {
 		return fmt.Errorf("create order module: %w", err)

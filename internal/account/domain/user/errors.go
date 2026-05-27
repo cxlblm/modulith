@@ -60,11 +60,42 @@ func (e invalidError) Reason() string {
 	return e.reason
 }
 
+type forbiddenError struct {
+	message string
+	reason  string
+	cause   error
+}
+
+func (e forbiddenError) Error() string {
+	if e.cause != nil {
+		return e.message + ": " + e.cause.Error()
+	}
+	return e.message
+}
+
+func (e forbiddenError) Unwrap() error {
+	return e.cause
+}
+
+func (e forbiddenError) Is(target error) bool {
+	other, ok := target.(interface {
+		Reason() string
+	})
+	return ok && other.Reason() == e.reason
+}
+
+func (e forbiddenError) Forbidden() {}
+
+func (e forbiddenError) Reason() string {
+	return e.reason
+}
+
 var (
 	ErrUserNotFound    = NewUserNotFound(nil)
 	ErrAddressNotFound = NewAddressNotFound(nil)
 	ErrInvalidUser     = NewInvalidUser(nil)
 	ErrInvalidAddress  = NewInvalidAddress(nil)
+	ErrUserDisabled    = NewUserDisabled(nil)
 )
 
 func NewUserNotFound(cause error) error {
@@ -81,4 +112,8 @@ func NewInvalidUser(cause error) error {
 
 func NewInvalidAddress(cause error) error {
 	return invalidError{message: "invalid address", reason: "invalid_address", cause: cause}
+}
+
+func NewUserDisabled(cause error) error {
+	return forbiddenError{message: "user disabled", reason: "user_disabled", cause: cause}
 }

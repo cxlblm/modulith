@@ -41,6 +41,11 @@ type conflictError interface {
 	Conflict()
 }
 
+type forbiddenError interface {
+	error
+	Forbidden()
+}
+
 type reasonedError interface {
 	error
 	Reason() string
@@ -102,6 +107,10 @@ func errorResponse(err error) (int, ErrorResponse) {
 
 	if _, ok := errors.AsType[conflictError](err); ok {
 		return appErrorResponse(http.StatusConflict, errorReason(err))
+	}
+
+	if _, ok := errors.AsType[forbiddenError](err); ok {
+		return appErrorResponse(http.StatusForbidden, errorReason(err))
 	}
 
 	if statusErr, ok := errors.AsType[statusCodeError](err); ok {

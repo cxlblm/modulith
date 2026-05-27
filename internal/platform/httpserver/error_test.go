@@ -23,6 +23,12 @@ func (testNotFoundError) Reason() string {
 	return "thing_not_found"
 }
 
+type testForbiddenError struct{}
+
+func (testForbiddenError) Error() string  { return "thing forbidden" }
+func (testForbiddenError) Forbidden()     {}
+func (testForbiddenError) Reason() string { return "thing_forbidden" }
+
 func TestErrorResponseMapsAppErrorToHTTPStatusAndReason(t *testing.T) {
 	status, body := errorResponse(testNotFoundError{cause: errors.New("database row 42 missing")})
 
@@ -37,5 +43,19 @@ func TestErrorResponseMapsAppErrorToHTTPStatusAndReason(t *testing.T) {
 	}
 	if strings.Contains(body.Error.Message, "database row 42 missing") {
 		t.Fatalf("response message leaks internal cause: %q", body.Error.Message)
+	}
+}
+
+func TestErrorResponseMapsForbiddenErrorToHTTPStatusAndReason(t *testing.T) {
+	status, body := errorResponse(testForbiddenError{})
+
+	if status != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", status, http.StatusForbidden)
+	}
+	if body.Error.Code != "forbidden" {
+		t.Fatalf("error code = %q, want %q", body.Error.Code, "forbidden")
+	}
+	if body.Error.Reason != "thing_forbidden" {
+		t.Fatalf("reason = %q, want %q", body.Error.Reason, "thing_forbidden")
 	}
 }
