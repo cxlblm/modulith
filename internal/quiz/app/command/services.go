@@ -27,15 +27,8 @@ type ParticipationRepository interface {
 	Save(ctx context.Context, p *participation.Participation) error
 }
 
-type RevivalCardRepository interface {
-	Balance(ctx context.Context, userID string) (int, error)
-	Grant(ctx context.Context, userID string, count int) error
-	ConsumeOne(ctx context.Context, userID string) error
-}
-
 type AnswerRevivalCards interface {
-	Balance(ctx context.Context, userID string) (int, error)
-	ConsumeOne(ctx context.Context, userID string) error
+	TryConsumeOne(ctx context.Context, userID string) (bool, error)
 }
 
 type RewardService interface {

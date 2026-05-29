@@ -63,14 +63,20 @@ func (h SubmitAnswerHandler) Handle(ctx context.Context, cmd SubmitAnswer) (Subm
 		}
 	}
 	correct := grade(snapshot, cmd)
-	outcome, err := p.Submit(cmd.QuestionID, correct)
-	if err != nil {
+	if err := p.CanSubmit(cmd.QuestionID); err != nil {
 		return SubmitAnswerResult{}, err
 	}
-	if outcome.UsedRevival {
-		if err := h.RevivalCards.ConsumeOne(ctx, cmd.UserID); err != nil {
-			return SubmitAnswerResult{}, fmt.Errorf("consume revival card: %w", err)
+	usedRevival := false
+	if !correct {
+		consumed, err := h.RevivalCards.TryConsumeOne(ctx, cmd.UserID)
+		if err != nil {
+			return SubmitAnswerResult{}, fmt.Errorf("try consume revival card: %w", err)
 		}
+		usedRevival = consumed
+	}
+	outcome, err := p.Submit(cmd.QuestionID, correct, usedRevival)
+	if err != nil {
+		return SubmitAnswerResult{}, err
 	}
 	if err := h.Participations.Save(ctx, p); err != nil {
 		return SubmitAnswerResult{}, fmt.Errorf("save participation: %w", err)
@@ -84,16 +90,12 @@ func (h SubmitAnswerHandler) Handle(ctx context.Context, cmd SubmitAnswer) (Subm
 }
 
 func (h SubmitAnswerHandler) newParticipation(ctx context.Context, userID string, c *contest.Contest) (*participation.Participation, error) {
-	cards, err := h.RevivalCards.Balance(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
 	snapshots := c.Snapshots()
 	refs := make([]participation.QuestionRef, 0, len(snapshots))
 	for _, snapshot := range snapshots {
 		refs = append(refs, participation.QuestionRef{ID: snapshot.QuestionID})
 	}
-	return participation.New(c.UUID().String(), userID, refs, cards)
+	return participation.New(c.UUID().String(), userID, refs)
 }
 
 func grade(snapshot contest.QuestionSnapshot, cmd SubmitAnswer) bool {

@@ -33,17 +33,16 @@ type AnswerOutcome struct {
 }
 
 type Participation struct {
-	uuid         ParticipationUUID
-	contestID    string
-	userID       string
-	questions    []QuestionRef
-	revivalCards int
-	status       Status
-	answers      []AnswerRecord
+	uuid      ParticipationUUID
+	contestID string
+	userID    string
+	questions []QuestionRef
+	status    Status
+	answers   []AnswerRecord
 }
 
-func New(contestID string, userID string, questions []QuestionRef, revivalCards int) (*Participation, error) {
-	if contestID == "" || userID == "" || len(questions) == 0 || revivalCards < 0 {
+func New(contestID string, userID string, questions []QuestionRef) (*Participation, error) {
+	if contestID == "" || userID == "" || len(questions) == 0 {
 		return nil, ErrInvalidParticipation
 	}
 	for _, ref := range questions {
@@ -52,50 +51,52 @@ func New(contestID string, userID string, questions []QuestionRef, revivalCards 
 		}
 	}
 	return &Participation{
-		uuid:         ParticipationUUID(bizid.New()),
-		contestID:    contestID,
-		userID:       userID,
-		questions:    append([]QuestionRef(nil), questions...),
-		revivalCards: revivalCards,
-		status:       StatusActive,
+		uuid:      ParticipationUUID(bizid.New()),
+		contestID: contestID,
+		userID:    userID,
+		questions: append([]QuestionRef(nil), questions...),
+		status:    StatusActive,
 	}, nil
 }
 
-func Rehydrate(uuid ParticipationUUID, contestID string, userID string, questions []QuestionRef, revivalCards int, status Status, answers []AnswerRecord) *Participation {
+func Rehydrate(uuid ParticipationUUID, contestID string, userID string, questions []QuestionRef, status Status, answers []AnswerRecord) *Participation {
 	return &Participation{
-		uuid:         uuid,
-		contestID:    contestID,
-		userID:       userID,
-		questions:    append([]QuestionRef(nil), questions...),
-		revivalCards: revivalCards,
-		status:       status,
-		answers:      append([]AnswerRecord(nil), answers...),
+		uuid:      uuid,
+		contestID: contestID,
+		userID:    userID,
+		questions: append([]QuestionRef(nil), questions...),
+		status:    status,
+		answers:   append([]AnswerRecord(nil), answers...),
 	}
 }
 
-func (p *Participation) Submit(questionID string, correct bool) (AnswerOutcome, error) {
+func (p *Participation) CanSubmit(questionID string) error {
 	if p.status == StatusEliminated {
-		return AnswerOutcome{}, ErrParticipantEliminated
+		return ErrParticipantEliminated
 	}
 	if p.status == StatusPassed {
-		return AnswerOutcome{}, ErrQuestionAlreadyAnswered
+		return ErrQuestionAlreadyAnswered
 	}
 	if !p.hasQuestion(questionID) {
-		return AnswerOutcome{}, ErrInvalidParticipation
+		return ErrInvalidParticipation
 	}
 	if p.hasAnswered(questionID) {
-		return AnswerOutcome{}, ErrQuestionAlreadyAnswered
+		return ErrQuestionAlreadyAnswered
+	}
+	return nil
+}
+
+func (p *Participation) Submit(questionID string, correct bool, usedRevival bool) (AnswerOutcome, error) {
+	if err := p.CanSubmit(questionID); err != nil {
+		return AnswerOutcome{}, err
 	}
 	record := AnswerRecord{QuestionID: questionID, Correct: correct, Passed: correct}
-	if !correct {
-		if p.revivalCards <= 0 {
-			p.status = StatusEliminated
-			p.answers = append(p.answers, record)
-			return AnswerOutcome{QuestionID: questionID, Correct: false, Status: p.status}, nil
-		}
-		p.revivalCards--
+	if !correct && usedRevival {
 		record.UsedRevival = true
 		record.Passed = true
+	}
+	if !record.Passed {
+		p.status = StatusEliminated
 	}
 	p.answers = append(p.answers, record)
 	if p.allPassed() {
@@ -108,7 +109,6 @@ func (p *Participation) UUID() ParticipationUUID { return p.uuid }
 func (p *Participation) ContestID() string       { return p.contestID }
 func (p *Participation) UserID() string          { return p.userID }
 func (p *Participation) Status() Status          { return p.status }
-func (p *Participation) RevivalCards() int       { return p.revivalCards }
 func (p *Participation) Questions() []QuestionRef {
 	return append([]QuestionRef(nil), p.questions...)
 }

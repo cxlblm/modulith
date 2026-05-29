@@ -15,9 +15,10 @@ import (
 )
 
 type Deps struct {
-	DB      *gorm.DB
-	Logger  *slog.Logger
-	Rewards command.RewardService
+	DB       *gorm.DB
+	Logger   *slog.Logger
+	Rewards  command.RewardService
+	Revivals command.AnswerRevivalCards
 }
 
 type Module struct {
@@ -29,16 +30,14 @@ func NewModule(deps Deps) (*Module, error) {
 	questions := mysql.NewQuestionRepository(deps.DB)
 	contests := mysql.NewContestRepository(deps.DB)
 	participations := mysql.NewParticipationRepository(deps.DB)
-	revivalCards := mysql.NewRevivalCardRepository(deps.DB)
 	readModel := mysql.NewReadModel(deps.DB)
 	application := &app.Application{
 		Commands: app.Commands{
-			CreateQuestion:    command.CreateQuestionHandler{Questions: questions},
-			CreateContest:     command.CreateContestHandler{Contests: contests, Questions: questions},
-			PublishContest:    command.PublishContestHandler{Contests: contests},
-			SubmitAnswer:      command.SubmitAnswerHandler{Contests: contests, Participations: participations, RevivalCards: revivalCards},
-			ClaimReward:       command.ClaimRewardHandler{Participations: participations, Rewards: deps.Rewards},
-			GrantRevivalCards: command.GrantRevivalCardsHandler{RevivalCards: revivalCards},
+			CreateQuestion: command.CreateQuestionHandler{Questions: questions},
+			CreateContest:  command.CreateContestHandler{Contests: contests, Questions: questions},
+			PublishContest: command.PublishContestHandler{Contests: contests},
+			SubmitAnswer:   command.SubmitAnswerHandler{Contests: contests, Participations: participations, RevivalCards: deps.Revivals},
+			ClaimReward:    command.ClaimRewardHandler{Participations: participations, Rewards: deps.Rewards},
 		},
 		Queries: app.Queries{
 			ListQuestions: query.ListQuestionsHandler{ReadModel: readModel},

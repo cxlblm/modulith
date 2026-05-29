@@ -23,7 +23,6 @@ func Register(e *echo.Echo, app *app.Application) {
 	e.POST("/quiz/contests", h.createContest)
 	e.POST("/quiz/contests/:contest_id/publish", h.publishContest)
 	e.GET("/quiz/contests/:contest_id/arena", h.getArena)
-	e.POST("/quiz/revival-cards/grant", h.grantRevivalCards)
 
 	g := e.Group("/quiz/contests/:contest_id", httpserver.RequireUserAuth())
 	g.POST("/answers", h.submitAnswer)
@@ -161,23 +160,6 @@ func (h *Handler) claimReward(c *echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, result)
-}
-
-func (h *Handler) grantRevivalCards(c *echo.Context) error {
-	var req struct {
-		UserID string `json:"user_id" validate:"required"`
-		Count  int    `json:"count" validate:"required,gt=0"`
-	}
-	if err := c.Bind(&req); err != nil {
-		return err
-	}
-	if err := c.Validate(req); err != nil {
-		return err
-	}
-	if err := h.app.Commands.GrantRevivalCards.Handle(c.Request().Context(), command.GrantRevivalCards{UserID: req.UserID, Count: req.Count}); err != nil {
-		return err
-	}
-	return c.NoContent(http.StatusNoContent)
 }
 
 func currentUserID(c *echo.Context) (string, error) {

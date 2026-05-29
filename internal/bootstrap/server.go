@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"modular_monolith/internal/account"
+	"modular_monolith/internal/entitlement"
 	"modular_monolith/internal/fulfillment"
 	"modular_monolith/internal/order"
 	"modular_monolith/internal/order/adapters/accountclient"
@@ -24,6 +25,7 @@ import (
 	"modular_monolith/internal/pricing"
 	pricingshopclient "modular_monolith/internal/pricing/adapters/shopclient"
 	"modular_monolith/internal/quiz"
+	"modular_monolith/internal/quiz/adapters/entitlementclient"
 	"modular_monolith/internal/quiz/adapters/rewardclient"
 	"modular_monolith/internal/reward"
 	"modular_monolith/internal/shop"
@@ -89,8 +91,13 @@ func mountBusiness(ctx context.Context, server *httpserver.Server, db *gorm.DB, 
 	if err != nil {
 		return fmt.Errorf("create reward module: %w", err)
 	}
+	entitlementMod, err := entitlement.NewModule(entitlement.Deps{DB: db, Logger: logger})
+	if err != nil {
+		return fmt.Errorf("create entitlement module: %w", err)
+	}
 	rewardService := rewardclient.NewRewardService(rewardMod.PortsModule)
-	quizMod, err := quiz.NewModule(quiz.Deps{DB: db, Logger: logger, Rewards: rewardService})
+	revivalCards := entitlementclient.NewRevivalCardsService(entitlementMod.PortsModule)
+	quizMod, err := quiz.NewModule(quiz.Deps{DB: db, Logger: logger, Rewards: rewardService, Revivals: revivalCards})
 	if err != nil {
 		return fmt.Errorf("create quiz module: %w", err)
 	}
@@ -125,6 +132,7 @@ func mountBusiness(ctx context.Context, server *httpserver.Server, db *gorm.DB, 
 	orderMod.RegisterHTTP(server.Echo())
 	paymentMod.RegisterHTTP(server.Echo())
 	fulfillmentMod.RegisterHTTP(server.Echo())
+	entitlementMod.RegisterHTTP(server.Echo())
 	quizMod.RegisterHTTP(server.Echo())
 
 	orderMod.RegisterEventSubs()
@@ -143,6 +151,7 @@ func allModels() []any {
 	models = append(models, payment.Models()...)
 	models = append(models, fulfillment.Models()...)
 	models = append(models, reward.Models()...)
+	models = append(models, entitlement.Models()...)
 	models = append(models, quiz.Models()...)
 	return models
 }

@@ -44,7 +44,7 @@ func (r *ParticipationRepository) Save(ctx context.Context, p *participation.Par
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "uuid"}},
-			DoUpdates: clause.AssignmentColumns([]string{"revival_cards", "status", "questions_json", "updated_at"}),
+			DoUpdates: clause.AssignmentColumns([]string{"status", "questions_json", "updated_at"}),
 		}).Create(&model).Error; err != nil {
 			return fmt.Errorf("save participation: %w", err)
 		}
@@ -70,7 +70,6 @@ func participationModels(p *participation.Participation) (ParticipationModel, []
 		ContestUUID:   p.ContestID(),
 		UserUUID:      p.UserID(),
 		QuestionsJSON: string(questionsJSON),
-		RevivalCards:  p.RevivalCards(),
 		Status:        string(p.Status()),
 	}
 	answers := make([]ParticipationAnswerModel, 0, len(p.Answers()))
@@ -105,7 +104,6 @@ func toParticipation(model ParticipationModel, answerModels []ParticipationAnswe
 		model.ContestUUID,
 		model.UserUUID,
 		questions,
-		model.RevivalCards,
 		participation.Status(model.Status),
 		answers,
 	), nil

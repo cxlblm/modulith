@@ -11,12 +11,11 @@ type Application struct {
 }
 
 type Commands struct {
-	CreateQuestion    command.CreateQuestionHandler
-	CreateContest     command.CreateContestHandler
-	PublishContest    command.PublishContestHandler
-	SubmitAnswer      command.SubmitAnswerHandler
-	ClaimReward       command.ClaimRewardHandler
-	GrantRevivalCards command.GrantRevivalCardsHandler
+	CreateQuestion command.CreateQuestionHandler
+	CreateContest  command.CreateContestHandler
+	PublishContest command.PublishContestHandler
+	SubmitAnswer   command.SubmitAnswerHandler
+	ClaimReward    command.ClaimRewardHandler
 }
 
 type Queries struct {
