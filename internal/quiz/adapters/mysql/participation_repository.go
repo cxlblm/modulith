@@ -5,10 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 
+	platformmysql "modular_monolith/internal/platform/mysql"
 	"modular_monolith/internal/quiz/app/command"
 	"modular_monolith/internal/quiz/domain/participation"
 )
@@ -37,20 +38,19 @@ func (r *ParticipationRepository) FindByContestAndUser(ctx context.Context, cont
 }
 
 func (r *ParticipationRepository) Save(ctx context.Context, p *participation.Participation) error {
-	model, answers, err := participationModels(p)
+	model, err := participationModel(p)
 	if err != nil {
 		return err
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "uuid"}},
-			DoUpdates: clause.AssignmentColumns([]string{"status", "questions_json", "updated_at"}),
-		}).Create(&model).Error; err != nil {
+		participationUUID, err := saveParticipationModel(tx, model)
+		if err != nil {
 			return fmt.Errorf("save participation: %w", err)
 		}
-		if err := tx.Where("participation_uuid = ?", p.UUID().String()).Delete(&ParticipationAnswerModel{}).Error; err != nil {
+		if err := tx.Where("participation_uuid = ?", participationUUID).Delete(&ParticipationAnswerModel{}).Error; err != nil {
 			return fmt.Errorf("delete participation answers: %w", err)
 		}
+		answers := participationAnswerModels(p, participationUUID)
 		for _, answer := range answers {
 			if err := tx.Create(&answer).Error; err != nil {
 				return fmt.Errorf("create participation answer: %w", err)
@@ -60,29 +60,81 @@ func (r *ParticipationRepository) Save(ctx context.Context, p *participation.Par
 	})
 }
 
-func participationModels(p *participation.Participation) (ParticipationModel, []ParticipationAnswerModel, error) {
+func saveParticipationModel(tx *gorm.DB, model ParticipationModel) (string, error) {
+	result := updateParticipationModel(tx, model.UUID, model)
+	if result.Error != nil {
+		return "", fmt.Errorf("update participation: %w", result.Error)
+	}
+	if result.RowsAffected > 0 {
+		return model.UUID, nil
+	}
+	if err := tx.Create(&model).Error; err != nil {
+		if isParticipationDuplicateKey(err) {
+			participationUUID, findErr := findParticipationUUID(tx, model)
+			if findErr != nil {
+				return "", findErr
+			}
+			if updateErr := updateParticipationModel(tx, participationUUID, model).Error; updateErr != nil {
+				return "", fmt.Errorf("update participation after duplicate: %w", updateErr)
+			}
+			return participationUUID, nil
+		}
+		return "", fmt.Errorf("create participation: %w", err)
+	}
+	return model.UUID, nil
+}
+
+func updateParticipationModel(tx *gorm.DB, uuid string, model ParticipationModel) *gorm.DB {
+	return tx.Model(&ParticipationModel{}).
+		Where("uuid = ?", uuid).
+		Updates(map[string]any{
+			"status":         model.Status,
+			"questions_json": model.QuestionsJSON,
+		})
+}
+
+func findParticipationUUID(tx *gorm.DB, model ParticipationModel) (string, error) {
+	var existing ParticipationModel
+	err := tx.Select("uuid").
+		Where("uuid = ?", model.UUID).
+		Or("contest_uuid = ? AND user_uuid = ?", model.ContestUUID, model.UserUUID).
+		First(&existing).Error
+	if err != nil {
+		return "", fmt.Errorf("find participation after duplicate: %w", err)
+	}
+	return existing.UUID, nil
+}
+
+func isParticipationDuplicateKey(err error) bool {
+	return platformmysql.IsDuplicateKey(err) || strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+func participationModel(p *participation.Participation) (ParticipationModel, error) {
 	questionsJSON, err := json.Marshal(p.Questions())
 	if err != nil {
-		return ParticipationModel{}, nil, fmt.Errorf("encode participation questions: %w", err)
+		return ParticipationModel{}, fmt.Errorf("encode participation questions: %w", err)
 	}
-	model := ParticipationModel{
+	return ParticipationModel{
 		UUID:          p.UUID().String(),
 		ContestUUID:   p.ContestID(),
 		UserUUID:      p.UserID(),
 		QuestionsJSON: string(questionsJSON),
 		Status:        string(p.Status()),
-	}
+	}, nil
+}
+
+func participationAnswerModels(p *participation.Participation, participationUUID string) []ParticipationAnswerModel {
 	answers := make([]ParticipationAnswerModel, 0, len(p.Answers()))
 	for _, answer := range p.Answers() {
 		answers = append(answers, ParticipationAnswerModel{
-			ParticipationUUID: p.UUID().String(),
+			ParticipationUUID: participationUUID,
 			QuestionUUID:      answer.QuestionID,
 			Correct:           answer.Correct,
 			UsedRevival:       answer.UsedRevival,
 			Passed:            answer.Passed,
 		})
 	}
-	return model, answers, nil
+	return answers
 }
 
 func toParticipation(model ParticipationModel, answerModels []ParticipationAnswerModel) (*participation.Participation, error) {

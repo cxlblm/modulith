@@ -64,7 +64,15 @@ func (h SubmitAnswerHandler) Handle(ctx context.Context, cmd SubmitAnswer) (Subm
 			return SubmitAnswerResult{}, err
 		}
 	}
-	result, err := h.submitDueAnswers(ctx, cmd.UserID, c, p, cmd.Answers, now)
+	processor := submitAnswerProcessor{
+		revivalCards:  h.RevivalCards,
+		userID:        cmd.UserID,
+		contest:       c,
+		participation: p,
+		answers:       cmd.Answers,
+		now:           now,
+	}
+	result, err := processor.process(ctx)
 	if err != nil {
 		return SubmitAnswerResult{}, err
 	}
@@ -86,61 +94,96 @@ func (h SubmitAnswerHandler) newParticipation(ctx context.Context, userID string
 	return participation.New(c.UUID().String(), userID, refs)
 }
 
-func (h SubmitAnswerHandler) submitDueAnswers(
-	ctx context.Context,
-	userID string,
-	c *contest.Contest,
-	p *participation.Participation,
-	answers []SubmittedAnswer,
-	now time.Time,
-) (SubmitAnswerResult, error) {
-	snapshots := c.Snapshots()
-	dueQuestionIDs := dueQuestionSet(c, now)
-	answersByQuestionID, skipped := firstDueAnswers(answers, snapshots, dueQuestionIDs)
-	result := SubmitAnswerResult{SkippedCount: skipped}
+type submitAnswerProcessor struct {
+	revivalCards  AnswerRevivalCards
+	userID        string
+	contest       *contest.Contest
+	participation *participation.Participation
+	answers       []SubmittedAnswer
+	now           time.Time
+	result        SubmitAnswerResult
+}
+
+type answerEvaluation struct {
+	missing bool
+	correct bool
+}
+
+func (p *submitAnswerProcessor) process(ctx context.Context) (SubmitAnswerResult, error) {
+	snapshots := p.contest.Snapshots()
+	dueQuestionIDs := dueQuestionSet(p.contest, p.now)
+	answersByQuestionID, skipped := firstDueAnswers(p.answers, snapshots, dueQuestionIDs)
+	p.result.SkippedCount = skipped
 
 	for _, snapshot := range snapshots {
 		if !dueQuestionIDs[snapshot.QuestionID] {
 			continue
 		}
-		if p.HasAnswered(snapshot.QuestionID) {
-			result.SkippedCount++
-			continue
-		}
-		if p.Status() != participation.StatusActive {
-			result.SkippedCount++
-			continue
-		}
-
 		answer, ok := answersByQuestionID[snapshot.QuestionID]
-		missing := !ok || !hasUsableAnswer(snapshot, answer)
-		correct := false
-		if missing {
-			result.MissingCount++
-		} else {
-			correct = grade(snapshot, answer)
-			if !correct {
-				result.IncorrectCount++
-			}
-		}
-
-		usedRevival := false
-		if missing || !correct {
-			consumed, err := h.RevivalCards.TryConsumeOne(ctx, userID)
-			if err != nil {
-				return SubmitAnswerResult{}, fmt.Errorf("try consume revival card: %w", err)
-			}
-			usedRevival = consumed
-			if usedRevival {
-				result.UsedRevivalCount++
-			}
-		}
-		if _, err := p.Submit(snapshot.QuestionID, correct, usedRevival); err != nil {
+		if err := p.processQuestion(ctx, snapshot, answer, ok); err != nil {
 			return SubmitAnswerResult{}, err
 		}
-		result.ProcessedCount++
 	}
-	return result, nil
+	return p.result, nil
+}
+
+func (p *submitAnswerProcessor) processQuestion(
+	ctx context.Context,
+	snapshot contest.QuestionSnapshot,
+	answer SubmittedAnswer,
+	answerFound bool,
+) error {
+	if p.participation.HasAnswered(snapshot.QuestionID) {
+		p.result.SkippedCount++
+		return nil
+	}
+	if p.participation.Status() != participation.StatusActive {
+		p.result.SkippedCount++
+		return nil
+	}
+
+	evaluation := p.evaluate(snapshot, answer, answerFound)
+	usedRevival := false
+	if evaluation.missing || !evaluation.correct {
+		consumed, err := p.tryRevive(ctx)
+		if err != nil {
+			return err
+		}
+		usedRevival = consumed
+	}
+	if _, err := p.participation.Submit(snapshot.QuestionID, evaluation.correct, usedRevival); err != nil {
+		return err
+	}
+	p.result.ProcessedCount++
+	return nil
+}
+
+func (p *submitAnswerProcessor) evaluate(
+	snapshot contest.QuestionSnapshot,
+	answer SubmittedAnswer,
+	answerFound bool,
+) answerEvaluation {
+	if !answerFound || !hasUsableAnswer(snapshot, answer) {
+		p.result.MissingCount++
+		return answerEvaluation{missing: true}
+	}
+
+	correct := grade(snapshot, answer)
+	if !correct {
+		p.result.IncorrectCount++
+	}
+	return answerEvaluation{correct: correct}
+}
+
+func (p *submitAnswerProcessor) tryRevive(ctx context.Context) (bool, error) {
+	consumed, err := p.revivalCards.TryConsumeOne(ctx, p.userID)
+	if err != nil {
+		return false, fmt.Errorf("try consume revival card: %w", err)
+	}
+	if consumed {
+		p.result.UsedRevivalCount++
+	}
+	return consumed, nil
 }
 
 func dueQuestionSet(c *contest.Contest, now time.Time) map[string]bool {
