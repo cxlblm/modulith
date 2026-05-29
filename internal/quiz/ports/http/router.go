@@ -127,9 +127,11 @@ func (h *Handler) submitAnswer(c *echo.Context) error {
 		return err
 	}
 	var req struct {
-		QuestionID string `json:"question_id" validate:"required"`
-		OptionID   string `json:"option_id"`
-		Text       string `json:"text"`
+		Answers []struct {
+			QuestionID string `json:"question_id"`
+			OptionID   string `json:"option_id"`
+			Text       string `json:"text"`
+		} `json:"answers" validate:"required"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return err
@@ -137,12 +139,18 @@ func (h *Handler) submitAnswer(c *echo.Context) error {
 	if err := c.Validate(req); err != nil {
 		return err
 	}
+	answers := make([]command.SubmittedAnswer, 0, len(req.Answers))
+	for _, answer := range req.Answers {
+		answers = append(answers, command.SubmittedAnswer{
+			QuestionID: answer.QuestionID,
+			OptionID:   answer.OptionID,
+			Text:       answer.Text,
+		})
+	}
 	result, err := h.app.Commands.SubmitAnswer.Handle(c.Request().Context(), command.SubmitAnswer{
-		ContestID:  c.Param("contest_id"),
-		UserID:     userID,
-		QuestionID: req.QuestionID,
-		OptionID:   req.OptionID,
-		Text:       req.Text,
+		ContestID: c.Param("contest_id"),
+		UserID:    userID,
+		Answers:   answers,
 	})
 	if err != nil {
 		return err

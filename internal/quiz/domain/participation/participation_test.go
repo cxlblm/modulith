@@ -58,3 +58,35 @@ func TestParticipationCanSubmitRejectsInvalidOrAnsweredQuestion(t *testing.T) {
 		t.Fatal("CanSubmit(answered) error = nil, want error")
 	}
 }
+
+func TestParticipationHasAnswered(t *testing.T) {
+	p, err := New("contest-1", "user-1", []QuestionRef{{ID: "q1"}, {ID: "q2"}})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if p.HasAnswered("q1") {
+		t.Fatal("HasAnswered(q1) = true, want false")
+	}
+	if _, err := p.Submit("q1", true, false); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if !p.HasAnswered("q1") {
+		t.Fatal("HasAnswered(q1) = false, want true")
+	}
+}
+
+func TestParticipationSubmitAfterTerminalStatusDoesNotAppendAnswer(t *testing.T) {
+	p, err := New("contest-1", "user-1", []QuestionRef{{ID: "q1"}, {ID: "q2"}})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if _, err := p.Submit("q1", false, false); err != nil {
+		t.Fatalf("Submit() error = %v", err)
+	}
+	if _, err := p.Submit("q2", true, false); err == nil {
+		t.Fatal("Submit(after eliminated) error = nil, want error")
+	}
+	if got := len(p.Answers()); got != 1 {
+		t.Fatalf("answers = %d, want 1", got)
+	}
+}

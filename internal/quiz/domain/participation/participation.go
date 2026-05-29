@@ -86,6 +86,10 @@ func (p *Participation) CanSubmit(questionID string) error {
 	return nil
 }
 
+func (p *Participation) HasAnswered(questionID string) bool {
+	return p.hasAnswered(questionID)
+}
+
 func (p *Participation) Submit(questionID string, correct bool, usedRevival bool) (AnswerOutcome, error) {
 	if err := p.CanSubmit(questionID); err != nil {
 		return AnswerOutcome{}, err
