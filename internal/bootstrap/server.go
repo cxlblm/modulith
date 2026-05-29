@@ -23,6 +23,9 @@ import (
 	"modular_monolith/internal/platform/mysql"
 	"modular_monolith/internal/pricing"
 	pricingshopclient "modular_monolith/internal/pricing/adapters/shopclient"
+	"modular_monolith/internal/quiz"
+	"modular_monolith/internal/quiz/adapters/rewardclient"
+	"modular_monolith/internal/reward"
 	"modular_monolith/internal/shop"
 )
 
@@ -82,6 +85,15 @@ func mountBusiness(ctx context.Context, server *httpserver.Server, db *gorm.DB, 
 	if err != nil {
 		return fmt.Errorf("create pricing module: %w", err)
 	}
+	rewardMod, err := reward.NewModule(reward.Deps{DB: db, Logger: logger})
+	if err != nil {
+		return fmt.Errorf("create reward module: %w", err)
+	}
+	rewardService := rewardclient.NewRewardService(rewardMod.PortsModule)
+	quizMod, err := quiz.NewModule(quiz.Deps{DB: db, Logger: logger, Rewards: rewardService})
+	if err != nil {
+		return fmt.Errorf("create quiz module: %w", err)
+	}
 
 	products := shopclient.NewProductsService(shopMod.PortsModule)
 	addresses := accountclient.NewAddressService(accountMod.PortsModule)
@@ -113,6 +125,7 @@ func mountBusiness(ctx context.Context, server *httpserver.Server, db *gorm.DB, 
 	orderMod.RegisterHTTP(server.Echo())
 	paymentMod.RegisterHTTP(server.Echo())
 	fulfillmentMod.RegisterHTTP(server.Echo())
+	quizMod.RegisterHTTP(server.Echo())
 
 	orderMod.RegisterEventSubs()
 	paymentMod.RegisterEventSubs()
@@ -129,5 +142,7 @@ func allModels() []any {
 	models = append(models, order.Models()...)
 	models = append(models, payment.Models()...)
 	models = append(models, fulfillment.Models()...)
+	models = append(models, reward.Models()...)
+	models = append(models, quiz.Models()...)
 	return models
 }

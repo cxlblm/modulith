@@ -9,12 +9,15 @@ import (
 
 func TestModelsUseAutoIncrementIDAndBusinessUUID(t *testing.T) {
 	businessModels := map[string]bool{
-		"UserModel":     true,
-		"AddressModel":  true,
-		"ProductModel":  true,
-		"OrderModel":    true,
-		"PaymentModel":  true,
-		"ShipmentModel": true,
+		"UserModel":          true,
+		"AddressModel":       true,
+		"ProductModel":       true,
+		"OrderModel":         true,
+		"PaymentModel":       true,
+		"ShipmentModel":      true,
+		"QuestionModel":      true,
+		"ContestModel":       true,
+		"ParticipationModel": true,
 	}
 
 	for _, model := range allModels() {
@@ -52,10 +55,16 @@ func TestModelsUseAutoIncrementIDAndBusinessUUID(t *testing.T) {
 
 func TestPersistenceReferencesUseUUIDNames(t *testing.T) {
 	expectedFields := map[string][]string{
-		"StockReservationModel": {"ProductUUID", "OrderUUID"},
-		"OrderItemModel":        {"OrderUUID", "ProductUUID"},
-		"PaymentModel":          {"OrderUUID"},
-		"ShipmentModel":         {"OrderUUID"},
+		"StockReservationModel":    {"ProductUUID", "OrderUUID"},
+		"OrderItemModel":           {"OrderUUID", "ProductUUID"},
+		"PaymentModel":             {"OrderUUID"},
+		"ShipmentModel":            {"OrderUUID"},
+		"QuestionOptionModel":      {"QuestionUUID"},
+		"ContestQuestionModel":     {"ContestUUID", "QuestionUUID"},
+		"ParticipationModel":       {"ContestUUID", "UserUUID"},
+		"ParticipationAnswerModel": {"ParticipationUUID", "QuestionUUID"},
+		"RevivalCardModel":         {"UserUUID"},
+		"RewardClaimModel":         {"ContestUUID", "UserUUID"},
 	}
 
 	for _, model := range allModels() {
