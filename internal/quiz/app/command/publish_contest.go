@@ -12,7 +12,7 @@ type PublishContest struct {
 }
 
 type PublishContestHandler struct {
-	Contests ContestRepository
+	Contests contest.Repository
 }
 
 func (h PublishContestHandler) Handle(ctx context.Context, cmd PublishContest) error {

@@ -141,6 +141,10 @@ func (f *fakeContests) FindByUUID(context.Context, contest.ContestUUID) (*contes
 	return f.contest, nil
 }
 
+func (f *fakeContests) Save(context.Context, *contest.Contest) error {
+	return nil
+}
+
 type fakeParticipations struct {
 	saved *participation.Participation
 }

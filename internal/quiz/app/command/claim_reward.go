@@ -19,7 +19,7 @@ type ClaimRewardResult struct {
 }
 
 type ClaimRewardHandler struct {
-	Participations ParticipationRepository
+	Participations participation.Repository
 	Rewards        RewardService
 }
 

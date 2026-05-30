@@ -33,8 +33,8 @@ type SubmitAnswerResult struct {
 }
 
 type SubmitAnswerHandler struct {
-	Contests       ContestReader
-	Participations ParticipationRepository
+	Contests       contest.Repository
+	Participations participation.Repository
 	RevivalCards   AnswerRevivalCards
 }
 

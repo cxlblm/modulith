@@ -32,7 +32,7 @@ type CreateQuestionResult struct {
 }
 
 type CreateQuestionHandler struct {
-	Questions QuestionRepository
+	Questions question.Repository
 }
 
 func (h CreateQuestionHandler) Handle(ctx context.Context, cmd CreateQuestion) (CreateQuestionResult, error) {

@@ -21,8 +21,8 @@ type CreateContestResult struct {
 }
 
 type CreateContestHandler struct {
-	Contests  ContestRepository
-	Questions QuestionRepository
+	Contests  contest.Repository
+	Questions question.Repository
 }
 
 func (h CreateContestHandler) Handle(ctx context.Context, cmd CreateContest) (CreateContestResult, error) {
