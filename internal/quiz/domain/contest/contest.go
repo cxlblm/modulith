@@ -1,6 +1,7 @@
 package contest
 
 import (
+	"strings"
 	"time"
 
 	"modular_monolith/internal/shared/bizid"
@@ -36,6 +37,16 @@ type QuestionSnapshot struct {
 	CorrectOptionID string
 	AcceptedAnswers []string
 	Material        MaterialSnapshot
+}
+
+type Answer struct {
+	OptionID string
+	Text     string
+}
+
+type AnswerEvaluation struct {
+	Missing bool
+	Correct bool
 }
 
 type Schedule struct {
@@ -104,6 +115,20 @@ func (c *Contest) Timeline() []Schedule {
 	return out
 }
 
+func (c *Contest) CanSubmitAt(now time.Time, gracePeriod time.Duration) bool {
+	return c.IsPublished() && !now.Before(c.startTime) && !now.After(c.EndTime().Add(gracePeriod))
+}
+
+func (c *Contest) DueQuestionIDs(now time.Time) map[string]bool {
+	due := make(map[string]bool, len(c.snapshots))
+	for _, schedule := range c.Timeline() {
+		if !now.Before(schedule.StartTime) {
+			due[schedule.QuestionID] = true
+		}
+	}
+	return due
+}
+
 func (c *Contest) EndTime() time.Time {
 	return c.startTime.Add(time.Duration(len(c.snapshots)*c.perQuestionSeconds) * time.Second)
 }
@@ -151,4 +176,43 @@ func copySnapshot(snapshot QuestionSnapshot) QuestionSnapshot {
 	snapshot.Options = append([]OptionSnapshot(nil), snapshot.Options...)
 	snapshot.AcceptedAnswers = append([]string(nil), snapshot.AcceptedAnswers...)
 	return snapshot
+}
+
+func (snapshot QuestionSnapshot) EvaluateAnswer(answer Answer, answerFound bool) AnswerEvaluation {
+	if !answerFound || !snapshot.hasUsableAnswer(answer) {
+		return AnswerEvaluation{Missing: true}
+	}
+	return AnswerEvaluation{Correct: snapshot.grade(answer)}
+}
+
+func (snapshot QuestionSnapshot) hasUsableAnswer(answer Answer) bool {
+	switch snapshot.Type {
+	case "choice":
+		return answer.OptionID != ""
+	case "blank":
+		return answer.Text != ""
+	default:
+		return false
+	}
+}
+
+func (snapshot QuestionSnapshot) grade(answer Answer) bool {
+	switch snapshot.Type {
+	case "choice":
+		return answer.OptionID != "" && answer.OptionID == snapshot.CorrectOptionID
+	case "blank":
+		got := normalizeAnswer(answer.Text)
+		for _, accepted := range snapshot.AcceptedAnswers {
+			if got == normalizeAnswer(accepted) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
+func normalizeAnswer(answer string) string {
+	return strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(answer))), " ")
 }

@@ -8,7 +8,6 @@ import (
 
 	"modular_monolith/internal/quiz/domain/contest"
 	"modular_monolith/internal/quiz/domain/participation"
-	"modular_monolith/internal/quiz/domain/question"
 )
 
 type SubmitAnswer struct {
@@ -51,7 +50,7 @@ func (h SubmitAnswerHandler) Handle(ctx context.Context, cmd SubmitAnswer) (Subm
 	if err != nil {
 		return SubmitAnswerResult{}, err
 	}
-	if !c.IsPublished() || now.Before(c.StartTime()) || now.After(c.EndTime().Add(30*time.Second)) {
+	if !c.CanSubmitAt(now, 30*time.Second) {
 		return SubmitAnswerResult{}, ErrContestNotOpen
 	}
 	p, err := h.Participations.FindByContestAndUser(ctx, cmd.ContestID, cmd.UserID)
@@ -104,14 +103,9 @@ type submitAnswerProcessor struct {
 	result        SubmitAnswerResult
 }
 
-type answerEvaluation struct {
-	missing bool
-	correct bool
-}
-
 func (p *submitAnswerProcessor) process(ctx context.Context) (SubmitAnswerResult, error) {
 	snapshots := p.contest.Snapshots()
-	dueQuestionIDs := dueQuestionSet(p.contest, p.now)
+	dueQuestionIDs := p.contest.DueQuestionIDs(p.now)
 	answersByQuestionID, skipped := firstDueAnswers(p.answers, snapshots, dueQuestionIDs)
 	p.result.SkippedCount = skipped
 
@@ -144,14 +138,14 @@ func (p *submitAnswerProcessor) processQuestion(
 
 	evaluation := p.evaluate(snapshot, answer, answerFound)
 	usedRevival := false
-	if evaluation.missing || !evaluation.correct {
+	if evaluation.Missing || !evaluation.Correct {
 		consumed, err := p.tryRevive(ctx)
 		if err != nil {
 			return err
 		}
 		usedRevival = consumed
 	}
-	if _, err := p.participation.Submit(snapshot.QuestionID, evaluation.correct, usedRevival); err != nil {
+	if _, err := p.participation.Submit(snapshot.QuestionID, evaluation.Correct, usedRevival); err != nil {
 		return err
 	}
 	p.result.ProcessedCount++
@@ -162,17 +156,19 @@ func (p *submitAnswerProcessor) evaluate(
 	snapshot contest.QuestionSnapshot,
 	answer SubmittedAnswer,
 	answerFound bool,
-) answerEvaluation {
-	if !answerFound || !hasUsableAnswer(snapshot, answer) {
+) contest.AnswerEvaluation {
+	evaluation := snapshot.EvaluateAnswer(contest.Answer{
+		OptionID: answer.OptionID,
+		Text:     answer.Text,
+	}, answerFound)
+	if evaluation.Missing {
 		p.result.MissingCount++
-		return answerEvaluation{missing: true}
+		return evaluation
 	}
-
-	correct := grade(snapshot, answer)
-	if !correct {
+	if !evaluation.Correct {
 		p.result.IncorrectCount++
 	}
-	return answerEvaluation{correct: correct}
+	return evaluation
 }
 
 func (p *submitAnswerProcessor) tryRevive(ctx context.Context) (bool, error) {
@@ -184,16 +180,6 @@ func (p *submitAnswerProcessor) tryRevive(ctx context.Context) (bool, error) {
 		p.result.UsedRevivalCount++
 	}
 	return consumed, nil
-}
-
-func dueQuestionSet(c *contest.Contest, now time.Time) map[string]bool {
-	due := make(map[string]bool, len(c.Snapshots()))
-	for _, schedule := range c.Timeline() {
-		if !now.Before(schedule.StartTime) {
-			due[schedule.QuestionID] = true
-		}
-	}
-	return due
 }
 
 func firstDueAnswers(
@@ -223,40 +209,4 @@ func firstDueAnswers(
 		out[answer.QuestionID] = answer
 	}
 	return out, skipped
-}
-
-func hasUsableAnswer(snapshot contest.QuestionSnapshot, answer SubmittedAnswer) bool {
-	switch question.Type(snapshot.Type) {
-	case question.TypeChoice:
-		return answer.OptionID != ""
-	case question.TypeBlank:
-		return answer.Text != ""
-	default:
-		return false
-	}
-}
-
-func grade(snapshot contest.QuestionSnapshot, answer SubmittedAnswer) bool {
-	q := question.Rehydrate(
-		question.QuestionUUID(snapshot.QuestionID),
-		question.Type(snapshot.Type),
-		snapshot.Prompt,
-		questionOptionsFromSnapshots(snapshot.Options),
-		snapshot.CorrectOptionID,
-		snapshot.AcceptedAnswers,
-		question.Material{
-			Kind:        question.MaterialKind(snapshot.Material.Kind),
-			AudioURL:    snapshot.Material.AudioURL,
-			PassageText: snapshot.Material.PassageText,
-		},
-	)
-	return q.Grade(question.Answer{OptionID: answer.OptionID, Text: answer.Text})
-}
-
-func questionOptionsFromSnapshots(options []contest.OptionSnapshot) []question.Option {
-	out := make([]question.Option, 0, len(options))
-	for _, option := range options {
-		out = append(out, question.Option{ID: option.ID, Text: option.Text})
-	}
-	return out
 }
